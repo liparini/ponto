@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Ponto Digital – Atacado Óptico</title>
+<title>Ponto Digital – Atacado Óptico MG</title>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
@@ -215,7 +215,7 @@
     <div class="login-logo">
       <div class="icon">⏱️</div>
       <h1>Ponto Digital</h1>
-      <p>Atacado Óptico</p>
+      <p>Atacado Óptico MG</p>
     </div>
     <div class="form-group">
       <label>E-mail</label>
@@ -825,9 +825,12 @@ function setDefaultDates() {
 
 async function carregarHistorico() {
   if (!currentUser) return;
-  const de = document.getElementById('filtro-de').value || '2000-01-01';
-  const ate = document.getElementById('filtro-ate').value || '2099-12-31';
+  const deEl = document.getElementById('filtro-de');
+  const ateEl = document.getElementById('filtro-ate');
   const body = document.getElementById('historico-body');
+  if (!deEl || !ateEl || !body) return;
+  const de = deEl.value || new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().slice(0,10);
+  const ate = ateEl.value || new Date().toISOString().slice(0,10);
   body.innerHTML = '<tr><td colspan="5" class="loading">Carregando...</td></tr>';
   try {
     const snap = await db.collection('pontos')
@@ -838,7 +841,6 @@ async function carregarHistorico() {
     if (snap.empty) { body.innerHTML = '<tr><td colspan="5" class="empty-state">Nenhum registro no período.</td></tr>'; return; }
     const docs = [];
     snap.forEach(d => docs.push(d.data()));
-    // Ordena por data desc, hora asc
     docs.sort((a,b) => b.dataISO.localeCompare(a.dataISO) || a.hora.localeCompare(b.hora));
     let html = '';
     docs.forEach(r => {
@@ -957,39 +959,54 @@ async function enviarAjuste() {
 
 async function carregarAjustes() {
   if (!currentUser) return;
-  const snap = await db.collection('ajustes').where('uid','==',currentUser.uid).orderBy('timestamp','desc').get();
   const body = document.getElementById('ajustes-body');
-  if (snap.empty) { body.innerHTML = '<tr><td colspan="4" class="empty-state">Nenhuma solicitação.</td></tr>'; return; }
-  let html = '';
-  snap.forEach(d => {
-    const r = d.data();
-    const statusBadge = r.status === 'aprovado' ? '<span class="badge badge-green">Aprovado</span>' :
-      r.status === 'rejeitado' ? '<span class="badge badge-red">Rejeitado</span>' :
-      '<span class="badge badge-yellow">Pendente</span>';
-    html += `<tr><td>${r.data}</td><td>${tipoLabel[r.tipo]||r.tipo}</td><td>${r.hora}</td><td>${statusBadge}</td></tr>`;
-  });
-  body.innerHTML = html;
+  if (!body) return;
+  try {
+    const snap = await db.collection('ajustes').where('uid','==',currentUser.uid).get();
+    if (snap.empty) { body.innerHTML = '<tr><td colspan="4" class="empty-state">Nenhuma solicitação.</td></tr>'; return; }
+    const docs = [];
+    snap.forEach(d => docs.push(d.data()));
+    docs.sort((a,b) => (b.timestamp?.seconds||0) - (a.timestamp?.seconds||0));
+    let html = '';
+    docs.forEach(r => {
+      const statusBadge = r.status === 'aprovado' ? '<span class="badge badge-green">Aprovado</span>' :
+        r.status === 'rejeitado' ? '<span class="badge badge-red">Rejeitado</span>' :
+        '<span class="badge badge-yellow">Pendente</span>';
+      html += `<tr><td>${r.data}</td><td>${tipoLabel[r.tipo]||r.tipo}</td><td>${r.hora}</td><td>${statusBadge}</td></tr>`;
+    });
+    body.innerHTML = html;
+  } catch(e) {
+    body.innerHTML = '<tr><td colspan="4" class="empty-state">Erro ao carregar.</td></tr>';
+  }
 }
 
 // ─── ADMIN ───
 async function carregarColaboradoresAdmin() {
-  const snap = await db.collection('usuarios').orderBy('nome','asc').get();
-  colaboradoresCache = [];
-  let html = '';
-  snap.forEach(d => {
-    const r = { id: d.id, ...d.data() };
-    colaboradoresCache.push(r);
-    const status = r.status === 'ativo' ? '<span class="badge badge-green">Ativo</span>' : '<span class="badge badge-red">Inativo</span>';
-    html += `<tr>
-      <td>${r.nome||'—'}</td>
-      <td>${r.email||'—'}</td>
-      <td>${r.cargo||'—'}</td>
-      <td>${r.jornadaDiaria||8}h</td>
-      <td>${status}</td>
-      <td><button class="btn btn-ghost btn-sm" onclick="editarColab('${d.id}')">✏️ Editar</button></td>
-    </tr>`;
-  });
-  document.getElementById('colab-body').innerHTML = html || '<tr><td colspan="6" class="empty-state">Nenhum colaborador.</td></tr>';
+  const body = document.getElementById('colab-body');
+  if (!body) return;
+  try {
+    const snap = await db.collection('usuarios').get();
+    colaboradoresCache = [];
+    const docs = [];
+    snap.forEach(d => docs.push({ id: d.id, ...d.data() }));
+    docs.sort((a,b) => (a.nome||'').localeCompare(b.nome||''));
+    let html = '';
+    docs.forEach(r => {
+      colaboradoresCache.push(r);
+      const status = r.status === 'ativo' ? '<span class="badge badge-green">Ativo</span>' : '<span class="badge badge-red">Inativo</span>';
+      html += `<tr>
+        <td>${r.nome||'—'}</td>
+        <td>${r.email||'—'}</td>
+        <td>${r.cargo||'—'}</td>
+        <td>${r.jornadaDiaria||8}h</td>
+        <td>${status}</td>
+        <td><button class="btn btn-ghost btn-sm" onclick="editarColab('${r.id}')">✏️ Editar</button></td>
+      </tr>`;
+    });
+    body.innerHTML = html || '<tr><td colspan="6" class="empty-state">Nenhum colaborador.</td></tr>';
+  } catch(e) {
+    if (body) body.innerHTML = `<tr><td colspan="6" style="color:var(--danger);padding:12px">Erro: ${e.message}</td></tr>`;
+  }
 }
 
 function abrirModalColaborador() {
@@ -1141,18 +1158,26 @@ async function carregarHistoricoAdmin() {
     body.innerHTML = `<tr><td colspan="6" style="color:var(--danger);padding:12px">Erro: ${e.message}</td></tr>`;
   }
 }
-  const snap = await db.collection('usuarios').where('status','==','ativo').orderBy('nome').get();
-  const opts = ['<option value="">Todos</option>'];
-  const opts2 = [];
-  snap.forEach(d => {
-    const r = d.data();
-    opts.push(`<option value="${d.id}">${r.nome}</option>`);
-    opts2.push(`<option value="${d.id}">${r.nome}</option>`);
-  });
-  const sel = document.getElementById('rel-colab-select');
-  if (sel) sel.innerHTML = opts.join('');
-  const sel2 = document.getElementById('banco-colab-select');
-  if (sel2) sel2.innerHTML = opts2.join('');
+
+async function carregarColabSelect() {
+  try {
+    const snap = await db.collection('usuarios').get();
+    const docs = [];
+    snap.forEach(d => docs.push({ id: d.id, ...d.data() }));
+    docs.sort((a,b) => (a.nome||'').localeCompare(b.nome||''));
+    const opts = ['<option value="">Todos</option>'];
+    const opts2 = [];
+    docs.forEach(r => {
+      if (r.status !== 'inativo') {
+        opts.push(`<option value="${r.id}">${r.nome||r.email}</option>`);
+        opts2.push(`<option value="${r.id}">${r.nome||r.email}</option>`);
+      }
+    });
+    const sel = document.getElementById('rel-colab-select');
+    if (sel) sel.innerHTML = opts.join('');
+    const sel2 = document.getElementById('banco-colab-select');
+    if (sel2) sel2.innerHTML = opts2.join('');
+  } catch(e) {}
 }
 
 async function zerarBanco() {
