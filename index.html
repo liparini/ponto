@@ -3,24 +3,574 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Teste Firebase Login</title>
+<title>Ponto Digital – Atacado Óptico</title>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-storage-compat.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
-  body { font-family: sans-serif; max-width: 500px; margin: 60px auto; padding: 20px; background: #f5f5f5; }
-  input { display: block; width: 100%; padding: 10px; margin: 8px 0; font-size: 16px; border: 1px solid #ccc; border-radius: 6px; }
-  button { padding: 12px 24px; font-size: 16px; background: #2563eb; color: white; border: none; border-radius: 6px; cursor: pointer; margin-top: 8px; }
-  #log { margin-top: 20px; background: #1e1e1e; color: #0f0; padding: 16px; border-radius: 8px; font-family: monospace; font-size: 13px; min-height: 120px; white-space: pre-wrap; }
+  :root {
+    --bg: #0f1117;
+    --surface: #1a1d27;
+    --card: #21253a;
+    --border: #2e3350;
+    --accent: #4f8ef7;
+    --accent2: #6ee7b7;
+    --danger: #f87171;
+    --warn: #fbbf24;
+    --text: #e8eaf2;
+    --muted: #8891b0;
+    --radius: 14px;
+    --shadow: 0 4px 24px rgba(0,0,0,0.4);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+
+  /* ── LOGIN ── */
+  #login-screen {
+    min-height: 100vh; display: flex; align-items: center; justify-content: center;
+    background: radial-gradient(ellipse at 60% 40%, #1a2a4a 0%, #0f1117 70%);
+  }
+  .login-box {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 20px;
+    padding: 48px 40px; width: 380px; box-shadow: var(--shadow);
+  }
+  .login-logo { text-align: center; margin-bottom: 32px; }
+  .login-logo .icon { font-size: 48px; }
+  .login-logo h1 { font-size: 22px; font-weight: 700; color: var(--accent); margin-top: 8px; }
+  .login-logo p { font-size: 13px; color: var(--muted); margin-top: 4px; }
+  .form-group { margin-bottom: 18px; }
+  .form-group label { display: block; font-size: 13px; font-weight: 500; color: var(--muted); margin-bottom: 6px; }
+  .form-group input, .form-group select, .form-group textarea {
+    width: 100%; padding: 12px 14px; background: var(--card); border: 1px solid var(--border);
+    border-radius: 10px; color: var(--text); font-family: inherit; font-size: 14px; transition: border 0.2s;
+  }
+  .form-group input:focus, .form-group select:focus, .form-group textarea:focus {
+    outline: none; border-color: var(--accent);
+  }
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+    padding: 12px 22px; border-radius: 10px; font-family: inherit; font-size: 14px;
+    font-weight: 600; cursor: pointer; border: none; transition: all 0.2s;
+  }
+  .btn-primary { background: var(--accent); color: #fff; width: 100%; }
+  .btn-primary:hover { background: #3a7de8; transform: translateY(-1px); }
+  .btn-success { background: var(--accent2); color: #0f1117; }
+  .btn-success:hover { filter: brightness(1.1); }
+  .btn-danger { background: var(--danger); color: #fff; }
+  .btn-warn { background: var(--warn); color: #0f1117; }
+  .btn-ghost { background: transparent; border: 1px solid var(--border); color: var(--text); }
+  .btn-ghost:hover { border-color: var(--accent); color: var(--accent); }
+  .btn-sm { padding: 7px 14px; font-size: 13px; }
+  .error-msg { color: var(--danger); font-size: 13px; margin-top: 8px; text-align: center; }
+
+  /* ── LAYOUT ── */
+  #app { display: none; }
+  .navbar {
+    position: sticky; top: 0; z-index: 100;
+    background: var(--surface); border-bottom: 1px solid var(--border);
+    padding: 0 24px; height: 60px;
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .navbar-brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 16px; color: var(--accent); }
+  .navbar-right { display: flex; align-items: center; gap: 12px; }
+  .user-badge {
+    display: flex; align-items: center; gap: 8px;
+    background: var(--card); border: 1px solid var(--border); border-radius: 30px;
+    padding: 6px 14px; font-size: 13px;
+  }
+  .user-badge .avatar { width: 26px; height: 26px; border-radius: 50%; background: var(--accent); display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; }
+  .container { max-width: 1100px; margin: 0 auto; padding: 24px 20px; }
+
+  /* ── TABS ── */
+  .tabs { display: flex; gap: 4px; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 4px; margin-bottom: 28px; flex-wrap: wrap; }
+  .tab-btn {
+    flex: 1; min-width: 100px; padding: 9px 14px; border-radius: 9px; border: none;
+    background: transparent; color: var(--muted); font-family: inherit; font-size: 13px;
+    font-weight: 500; cursor: pointer; transition: all 0.2s; white-space: nowrap;
+  }
+  .tab-btn.active { background: var(--accent); color: #fff; }
+  .tab-btn:hover:not(.active) { color: var(--text); background: var(--card); }
+  .tab-pane { display: none; }
+  .tab-pane.active { display: block; }
+
+  /* ── CARDS ── */
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 24px; margin-bottom: 20px; }
+  .card-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; }
+  .card-title { font-size: 16px; font-weight: 600; }
+  .section-title { font-size: 20px; font-weight: 700; margin-bottom: 20px; display: flex; align-items: center; gap: 10px; }
+
+  /* ── PONTO ── */
+  .clock-display {
+    text-align: center; padding: 32px; background: var(--surface);
+    border: 1px solid var(--border); border-radius: var(--radius); margin-bottom: 24px;
+  }
+  .clock-time { font-family: 'DM Mono', monospace; font-size: 52px; font-weight: 500; color: var(--accent); letter-spacing: 2px; }
+  .clock-date { color: var(--muted); font-size: 15px; margin-top: 6px; }
+  .ponto-btns { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-bottom: 20px; }
+  .ponto-btn {
+    padding: 18px 12px; border-radius: 12px; border: 2px solid transparent;
+    font-family: inherit; font-size: 14px; font-weight: 600; cursor: pointer;
+    display: flex; flex-direction: column; align-items: center; gap: 6px; transition: all 0.2s;
+  }
+  .ponto-btn .icon { font-size: 24px; }
+  .ponto-btn.entrada { background: rgba(78,142,247,0.12); border-color: var(--accent); color: var(--accent); }
+  .ponto-btn.pausa { background: rgba(251,191,36,0.12); border-color: var(--warn); color: var(--warn); }
+  .ponto-btn.retorno { background: rgba(110,231,183,0.12); border-color: var(--accent2); color: var(--accent2); }
+  .ponto-btn.saida { background: rgba(248,113,113,0.12); border-color: var(--danger); color: var(--danger); }
+  .ponto-btn:hover { transform: translateY(-2px); filter: brightness(1.15); }
+  .ponto-btn:disabled { opacity: 0.35; cursor: not-allowed; transform: none; }
+
+  /* ── CAMERA ── */
+  .camera-section { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; margin-bottom: 16px; }
+  #camera-video, #camera-canvas { width: 100%; border-radius: 8px; display: none; }
+  #photo-preview { width: 100%; border-radius: 8px; display: none; margin-top: 8px; }
+  .camera-controls { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+
+  /* ── TABLE ── */
+  .table-wrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { text-align: left; padding: 10px 12px; color: var(--muted); font-weight: 500; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  td { padding: 10px 12px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: rgba(255,255,255,0.02); }
+  .badge {
+    display: inline-block; padding: 3px 10px; border-radius: 20px; font-size: 12px; font-weight: 600;
+  }
+  .badge-green { background: rgba(110,231,183,0.15); color: var(--accent2); }
+  .badge-blue { background: rgba(79,142,247,0.15); color: var(--accent); }
+  .badge-yellow { background: rgba(251,191,36,0.15); color: var(--warn); }
+  .badge-red { background: rgba(248,113,113,0.15); color: var(--danger); }
+
+  /* ── BANCO DE HORAS ── */
+  .horas-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-bottom: 20px; }
+  .stat-box { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 18px; text-align: center; }
+  .stat-box .val { font-size: 28px; font-weight: 700; font-family: 'DM Mono', monospace; }
+  .stat-box .lbl { font-size: 12px; color: var(--muted); margin-top: 4px; }
+  .val-pos { color: var(--accent2); }
+  .val-neg { color: var(--danger); }
+  .val-neu { color: var(--accent); }
+
+  /* ── MODAL ── */
+  .modal-overlay {
+    display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.7);
+    z-index: 200; align-items: center; justify-content: center; padding: 20px;
+  }
+  .modal-overlay.open { display: flex; }
+  .modal-box {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 18px;
+    padding: 28px; width: 100%; max-width: 480px; box-shadow: var(--shadow);
+    max-height: 90vh; overflow-y: auto;
+  }
+  .modal-title { font-size: 18px; font-weight: 700; margin-bottom: 20px; display: flex; align-items: center; justify-content: space-between; }
+  .modal-close { background: none; border: none; color: var(--muted); cursor: pointer; font-size: 20px; }
+  .modal-close:hover { color: var(--text); }
+
+  /* ── TOAST ── */
+  #toast {
+    position: fixed; bottom: 24px; right: 24px; z-index: 999;
+    background: var(--card); border: 1px solid var(--border); border-radius: 12px;
+    padding: 14px 20px; font-size: 14px; box-shadow: var(--shadow);
+    transform: translateY(80px); opacity: 0; transition: all 0.3s; max-width: 320px;
+  }
+  #toast.show { transform: translateY(0); opacity: 1; }
+  #toast.success { border-color: var(--accent2); color: var(--accent2); }
+  #toast.error { border-color: var(--danger); color: var(--danger); }
+  #toast.info { border-color: var(--accent); color: var(--accent); }
+
+  /* ── UTILS ── */
+  .flex { display: flex; }
+  .gap-2 { gap: 8px; }
+  .gap-3 { gap: 12px; }
+  .mt-2 { margin-top: 8px; }
+  .mt-3 { margin-top: 12px; }
+  .mt-4 { margin-top: 16px; }
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .text-muted { color: var(--muted); font-size: 13px; }
+  .text-center { text-align: center; }
+  .loading { text-align: center; padding: 40px; color: var(--muted); }
+  .empty-state { text-align: center; padding: 48px 20px; color: var(--muted); }
+  .empty-state .icon { font-size: 40px; margin-bottom: 12px; }
+  .photo-thumb { width: 36px; height: 36px; border-radius: 6px; object-fit: cover; cursor: pointer; }
+
+  @media (max-width: 600px) {
+    .ponto-btns { grid-template-columns: 1fr 1fr; }
+    .horas-stats { grid-template-columns: 1fr; }
+    .grid-2 { grid-template-columns: 1fr; }
+    .login-box { width: 100%; padding: 32px 20px; }
+    .clock-time { font-size: 38px; }
+    .tabs { gap: 2px; }
+    .tab-btn { min-width: 80px; font-size: 12px; }
+    .container { padding: 16px 12px; }
+  }
 </style>
 </head>
 <body>
-<h2>🔥 Teste Firebase Login</h2>
-<input type="email" id="email" placeholder="E-mail" />
-<input type="password" id="senha" placeholder="Senha" />
-<button onclick="testar()">Testar Login</button>
-<div id="log">Aguardando...</div>
+
+<!-- LOGIN -->
+<div id="login-screen">
+  <div class="login-box">
+    <div class="login-logo">
+      <div class="icon">⏱️</div>
+      <h1>Ponto Digital</h1>
+      <p>Atacado Óptico</p>
+    </div>
+    <div class="form-group">
+      <label>E-mail</label>
+      <input type="email" id="login-email" placeholder="seu@email.com">
+    </div>
+    <div class="form-group">
+      <label>Senha</label>
+      <input type="password" id="login-senha" placeholder="••••••••" onkeydown="if(event.key==='Enter') fazerLogin()">
+    </div>
+    <button class="btn btn-primary" onclick="fazerLogin()" id="btn-login">Entrar</button>
+    <p id="login-error" style="font-size:13px;margin-top:10px;text-align:center"></p>
+    <div id="domain-help" style="display:none;margin-top:14px;background:#1a1200;border:1px solid var(--warn);border-radius:10px;padding:14px;font-size:12px;color:var(--warn);line-height:1.8">
+      <b>⚠️ Como corrigir "Domínio não autorizado":</b><br>
+      1. Acesse <b>console.firebase.google.com</b><br>
+      2. Selecione seu projeto → <b>Authentication</b> → <b>Settings</b><br>
+      3. Aba <b>"Authorized domains"</b> → <b>"Add domain"</b><br>
+      4. Adicione <b>localhost</b> (para uso local) ou o domínio do seu site
+    </div>
+  </div>
+</div>
+
+<!-- APP -->
+<div id="app">
+  <nav class="navbar">
+    <div class="navbar-brand">⏱️ Ponto Digital</div>
+    <div class="navbar-right">
+      <div class="user-badge">
+        <div class="avatar" id="user-avatar">?</div>
+        <span id="user-name-nav">—</span>
+      </div>
+      <button class="btn btn-ghost btn-sm" onclick="fazerLogout()">Sair</button>
+    </div>
+  </nav>
+
+  <div class="container">
+    <div class="tabs" id="main-tabs">
+      <button class="tab-btn active" onclick="changeTab('ponto')">🕐 Bater Ponto</button>
+      <button class="tab-btn" onclick="changeTab('historico')">📋 Histórico</button>
+      <button class="tab-btn admin-tab banco-tab" onclick="changeTab('banco')" style="display:none">⚖️ Banco de Horas</button>
+      <button class="tab-btn" onclick="changeTab('ajuste')">✏️ Solicitar Ajuste</button>
+      <button class="tab-btn admin-tab" onclick="changeTab('admin')" style="display:none">⚙️ Admin</button>
+    </div>
+
+    <!-- ── PONTO ── -->
+    <div class="tab-pane active" id="tab-ponto">
+      <div class="clock-display">
+        <div class="clock-time" id="clock">00:00:00</div>
+        <div class="clock-date" id="clock-date">—</div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">📷 Foto (opcional)</span>
+          <button class="btn btn-ghost btn-sm" onclick="toggleCamera()">Ativar câmera</button>
+        </div>
+        <div class="camera-section" id="camera-section" style="display:none">
+          <video id="camera-video" autoplay playsinline></video>
+          <canvas id="camera-canvas" style="display:none"></canvas>
+          <img id="photo-preview" alt="foto capturada">
+          <div class="camera-controls">
+            <button class="btn btn-success btn-sm" onclick="tirarFoto()">📸 Tirar Foto</button>
+            <button class="btn btn-ghost btn-sm" onclick="limparFoto()">🗑️ Limpar</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="ponto-btns">
+        <button class="ponto-btn entrada" onclick="registrarPonto('entrada')">
+          <span class="icon">🟢</span> Início do Trabalho
+        </button>
+        <button class="ponto-btn pausa" onclick="registrarPonto('pausa_inicio')">
+          <span class="icon">🟡</span> Pausa Almoço
+        </button>
+        <button class="ponto-btn retorno" onclick="registrarPonto('pausa_fim')">
+          <span class="icon">🔵</span> Retorno Almoço
+        </button>
+        <button class="ponto-btn saida" onclick="registrarPonto('saida')">
+          <span class="icon">🔴</span> Fim do Trabalho
+        </button>
+      </div>
+
+      <div class="card" id="ponto-hoje-card">
+        <div class="card-title" style="margin-bottom:14px">Registros de hoje</div>
+        <div id="registros-hoje"><div class="loading">Carregando...</div></div>
+      </div>
+    </div>
+
+    <!-- ── HISTORICO ── -->
+    <div class="tab-pane" id="tab-historico">
+      <div class="section-title">📋 Histórico de Ponto</div>
+      <div class="card">
+        <div class="flex gap-3" style="flex-wrap:wrap;margin-bottom:16px">
+          <div class="form-group" style="margin:0;flex:1;min-width:140px">
+            <label>De</label>
+            <input type="date" id="filtro-de">
+          </div>
+          <div class="form-group" style="margin:0;flex:1;min-width:140px">
+            <label>Até</label>
+            <input type="date" id="filtro-ate">
+          </div>
+          <div style="display:flex;align-items:flex-end;gap:8px">
+            <button class="btn btn-primary btn-sm" onclick="filtrarHistorico()">🔍 Filtrar</button>
+            <button class="btn btn-ghost btn-sm" onclick="exportarPDF()">📄 Exportar PDF</button>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table id="tabela-historico">
+            <thead><tr><th>Data</th><th>Tipo</th><th>Horário</th><th>Foto</th><th>Origem</th></tr></thead>
+            <tbody id="historico-body"><tr><td colspan="5" class="loading">Carregando...</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── BANCO DE HORAS ── -->
+    <div class="tab-pane" id="tab-banco">
+      <div class="section-title">⚖️ Banco de Horas</div>
+      <div class="horas-stats">
+        <div class="stat-box"><div class="val val-pos" id="stat-trabalhado">0h 0m</div><div class="lbl">Horas trabalhadas (mês)</div></div>
+        <div class="stat-box"><div class="val val-neu" id="stat-previsto">0h 0m</div><div class="lbl">Horas previstas (mês)</div></div>
+        <div class="stat-box"><div class="val val-pos" id="stat-saldo">0h 0m</div><div class="lbl">Saldo banco de horas</div></div>
+      </div>
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">Histórico do Banco</span>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Data</th><th>Tipo</th><th>Horas</th><th>Observação</th></tr></thead>
+            <tbody id="banco-body"><tr><td colspan="4" class="loading">Carregando...</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── AJUSTE ── -->
+    <div class="tab-pane" id="tab-ajuste">
+      <div class="section-title">✏️ Solicitar Ajuste de Ponto</div>
+      <div class="card" style="max-width:500px">
+        <p class="text-muted" style="margin-bottom:18px">Esqueceu de bater o ponto? Envie uma solicitação para o administrador.</p>
+        <div class="form-group">
+          <label>Data do esquecimento</label>
+          <input type="date" id="ajuste-data">
+        </div>
+        <div class="form-group">
+          <label>Tipo de registro</label>
+          <select id="ajuste-tipo">
+            <option value="entrada">Início do Trabalho</option>
+            <option value="pausa_inicio">Pausa para Almoço</option>
+            <option value="pausa_fim">Término do Almoço</option>
+            <option value="saida">Fim do Trabalho</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Horário correto</label>
+          <input type="time" id="ajuste-hora">
+        </div>
+        <div class="form-group">
+          <label>Motivo / Justificativa</label>
+          <textarea id="ajuste-motivo" rows="3" placeholder="Descreva o motivo..."></textarea>
+        </div>
+        <button class="btn btn-primary" onclick="enviarAjuste()">📨 Enviar Solicitação</button>
+      </div>
+      <div class="card" style="margin-top:0">
+        <div class="card-title" style="margin-bottom:14px">Minhas Solicitações</div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Data</th><th>Tipo</th><th>Hora</th><th>Status</th></tr></thead>
+            <tbody id="ajustes-body"><tr><td colspan="4" class="loading">Carregando...</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── ADMIN ── -->
+    <div class="tab-pane" id="tab-admin">
+      <div class="section-title">⚙️ Administração</div>
+      <div class="tabs" style="margin-bottom:20px">
+        <button class="tab-btn active" onclick="changeAdminTab('colaboradores')">👥 Colaboradores</button>
+        <button class="tab-btn" onclick="changeAdminTab('historico-admin')">📋 Histórico</button>
+        <button class="tab-btn" onclick="changeAdminTab('ajustes-admin')">✏️ Solicitações</button>
+        <button class="tab-btn" onclick="changeAdminTab('banco-admin')">⚖️ Banco de Horas</button>
+        <button class="tab-btn" onclick="changeAdminTab('relatorio-admin')">📄 Relatórios</button>
+      </div>
+
+      <!-- Colaboradores -->
+      <div id="admin-colaboradores">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+          <span class="card-title">Colaboradores Cadastrados</span>
+          <button class="btn btn-success btn-sm" onclick="abrirModalColaborador()">+ Novo Colaborador</button>
+        </div>
+        <div class="card">
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Nome</th><th>E-mail</th><th>Cargo</th><th>Jornada (h/dia)</th><th>Status</th><th>Ações</th></tr></thead>
+              <tbody id="colab-body"><tr><td colspan="6" class="loading">Carregando...</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- Histórico ADMIN -->
+      <div id="admin-historico-admin" style="display:none">
+        <div class="card-title" style="margin-bottom:16px">Histórico de Ponto — Todos os Colaboradores</div>
+        <div class="card">
+          <div class="flex gap-3" style="flex-wrap:wrap;margin-bottom:16px">
+            <div class="form-group" style="margin:0;flex:1;min-width:130px">
+              <label>Colaborador</label>
+              <select id="admin-hist-colab"><option value="">Todos</option></select>
+            </div>
+            <div class="form-group" style="margin:0;flex:1;min-width:120px">
+              <label>De</label>
+              <input type="date" id="admin-hist-de">
+            </div>
+            <div class="form-group" style="margin:0;flex:1;min-width:120px">
+              <label>Até</label>
+              <input type="date" id="admin-hist-ate">
+            </div>
+            <div style="display:flex;align-items:flex-end">
+              <button class="btn btn-primary btn-sm" onclick="carregarHistoricoAdmin()">🔍 Filtrar</button>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Data</th><th>Colaborador</th><th>Tipo</th><th>Horário</th><th>Foto</th><th>Origem</th></tr></thead>
+              <tbody id="admin-hist-body"><tr><td colspan="6" class="loading">Use o filtro acima para buscar.</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- Solicitações de ajuste ADMIN -->
+      <div id="admin-ajustes-admin" style="display:none">
+        <div class="card-title" style="margin-bottom:16px">Solicitações de Ajuste Pendentes</div>
+        <div class="card">
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Colaborador</th><th>Data</th><th>Tipo</th><th>Hora</th><th>Motivo</th><th>Ações</th></tr></thead>
+              <tbody id="admin-ajustes-body"><tr><td colspan="6" class="loading">Carregando...</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- Banco ADMIN -->
+      <div id="admin-banco-admin" style="display:none">
+        <div class="card-title" style="margin-bottom:16px">Gerenciar Banco de Horas</div>
+        <div class="card" style="max-width:500px">
+          <div class="form-group">
+            <label>Colaborador</label>
+            <select id="banco-colab-select"><option>Carregando...</option></select>
+          </div>
+          <div class="form-group">
+            <label>Tipo de pagamento</label>
+            <select id="banco-tipo-pag">
+              <option value="folga">Folga concedida</option>
+              <option value="pagamento">Pagamento em dinheiro</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Horas a zerar / pagar (ex: 3.5)</label>
+            <input type="number" id="banco-horas" step="0.5" placeholder="0">
+          </div>
+          <div class="form-group">
+            <label>Observação</label>
+            <input type="text" id="banco-obs" placeholder="Ex: Folga dia 20/06">
+          </div>
+          <button class="btn btn-primary" onclick="zerarBanco()">✅ Registrar Pagamento</button>
+        </div>
+      </div>
+
+      <!-- Relatório ADMIN -->
+      <div id="admin-relatorio-admin" style="display:none">
+        <div class="card-title" style="margin-bottom:16px">Gerar Relatório</div>
+        <div class="card" style="max-width:500px">
+          <div class="form-group">
+            <label>Colaborador</label>
+            <select id="rel-colab-select"><option value="">Todos</option></select>
+          </div>
+          <div class="grid-2">
+            <div class="form-group" style="margin:0">
+              <label>De</label>
+              <input type="date" id="rel-de">
+            </div>
+            <div class="form-group" style="margin:0">
+              <label>Até</label>
+              <input type="date" id="rel-ate">
+            </div>
+          </div>
+          <button class="btn btn-primary" style="margin-top:16px" onclick="gerarRelatorioAdmin()">📄 Gerar PDF</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL COLABORADOR -->
+<div class="modal-overlay" id="modal-colab">
+  <div class="modal-box">
+    <div class="modal-title">
+      <span id="modal-colab-title">Novo Colaborador</span>
+      <button class="modal-close" onclick="fecharModal('modal-colab')">✕</button>
+    </div>
+    <div class="form-group">
+      <label>Nome completo *</label>
+      <input type="text" id="colab-nome" placeholder="Nome do colaborador">
+    </div>
+    <div class="form-group">
+      <label>E-mail *</label>
+      <input type="email" id="colab-email" placeholder="email@empresa.com">
+    </div>
+    <div class="form-group">
+      <label>Senha (mín. 6 caracteres) *</label>
+      <input type="password" id="colab-senha" placeholder="Somente no cadastro">
+      <small class="text-muted">Deixe em branco para não alterar (edição)</small>
+    </div>
+    <div class="form-group">
+      <label>Cargo</label>
+      <input type="text" id="colab-cargo" placeholder="Ex: Vendedor">
+    </div>
+    <div class="form-group">
+      <label>Jornada diária (horas)</label>
+      <input type="number" id="colab-jornada" value="8" step="0.5" min="1" max="12">
+    </div>
+    <div class="form-group">
+      <label>Status</label>
+      <select id="colab-status">
+        <option value="ativo">Ativo</option>
+        <option value="inativo">Inativo</option>
+      </select>
+    </div>
+    <input type="hidden" id="colab-uid">
+    <div class="flex gap-2 mt-4">
+      <button class="btn btn-primary" onclick="salvarColaborador()">💾 Salvar</button>
+      <button class="btn btn-ghost" onclick="fecharModal('modal-colab')">Cancelar</button>
+    </div>
+    <p class="error-msg" id="colab-error"></p>
+  </div>
+</div>
+
+<!-- MODAL FOTO GRANDE -->
+<div class="modal-overlay" id="modal-foto">
+  <div class="modal-box" style="text-align:center;max-width:360px">
+    <div class="modal-title">
+      <span>Foto do Registro</span>
+      <button class="modal-close" onclick="fecharModal('modal-foto')">✕</button>
+    </div>
+    <img id="foto-grande" style="width:100%;border-radius:10px;max-height:400px;object-fit:cover">
+  </div>
+</div>
+
+<div id="toast"></div>
 
 <script>
+// ─── FIREBASE CONFIG ───
 const firebaseConfig = {
   apiKey: "AIzaSyD2ZyJ2FmcDVX_2Icrr1xSsbKzQ5eVW-Xs",
   authDomain: "ponto-1593b.firebaseapp.com",
@@ -29,45 +579,690 @@ const firebaseConfig = {
   messagingSenderId: "337444926131",
   appId: "1:337444926131:web:6c625d516ae9d927fbb6c6"
 };
-
-function log(msg) {
-  const el = document.getElementById('log');
-  const time = new Date().toLocaleTimeString('pt-BR');
-  el.textContent += '\n[' + time + '] ' + msg;
-  console.log(msg);
-}
-
-log('Inicializando Firebase...');
-try {
-  firebase.initializeApp(firebaseConfig);
-  log('✅ Firebase inicializado');
-} catch(e) {
-  log('❌ Erro ao inicializar: ' + e.message);
-}
-
+firebase.initializeApp(firebaseConfig);
 const auth = firebase.auth();
+const db = firebase.firestore();
+const storage = firebase.storage();
 
+const ADMINS = ['atacadoopticomg.financeiro@gmail.com', 'carolline.bhz@gmail.com'];
+
+// ─── STATE ───
+let currentUser = null;
+let currentUserData = null;
+let isAdmin = false;
+let cameraStream = null;
+let capturedPhoto = null;
+let editandoColabId = null;
+let colaboradoresCache = [];
+
+// ─── CLOCK ───
+function tickClock() {
+  const now = new Date();
+  document.getElementById('clock').textContent =
+    now.toLocaleTimeString('pt-BR', { hour12: false });
+  document.getElementById('clock-date').textContent =
+    now.toLocaleDateString('pt-BR', { weekday:'long', day:'2-digit', month:'long', year:'numeric' });
+}
+setInterval(tickClock, 1000);
+tickClock();
+
+// ─── AUTH ───
 auth.onAuthStateChanged(user => {
+  const btn = document.getElementById('btn-login');
   if (user) {
-    log('✅ onAuthStateChanged: logado como ' + user.email);
-    log('   UID: ' + user.uid);
-    document.getElementById('log').style.color = '#0f0';
+    currentUser = user;
+    isAdmin = ADMINS.includes(user.email);
+    currentUserData = { nome: user.email.split('@')[0], cargo: '', jornadaDiaria: 8, status: 'ativo' };
+
+    document.getElementById('login-screen').style.display = 'none';
+    document.getElementById('app').style.display = 'block';
+    document.getElementById('login-error').textContent = '';
+    document.getElementById('user-name-nav').textContent = currentUserData.nome;
+    document.getElementById('user-avatar').textContent = currentUserData.nome[0].toUpperCase();
+    if (btn) { btn.textContent = 'Entrar'; btn.disabled = false; }
+
+    if (isAdmin) {
+      document.querySelectorAll('.admin-tab').forEach(t => t.style.display = '');
+    }
+
+    // Busca nome real no Firestore em background
+    db.collection('usuarios').doc(user.uid).get().then(doc => {
+      if (doc.exists && doc.data().nome) {
+        currentUserData = doc.data();
+      } else {
+        db.collection('usuarios').doc(user.uid).set(
+          { nome: currentUserData.nome, email: user.email, cargo: '', jornadaDiaria: 8, status: 'ativo', isAdmin },
+          { merge: true }
+        ).catch(() => {});
+      }
+      document.getElementById('user-name-nav').textContent = currentUserData.nome || user.email;
+      document.getElementById('user-avatar').textContent = (currentUserData.nome || user.email)[0].toUpperCase();
+    }).catch(() => {});
+
+    // Tudo em try/catch separado para não travar
+    try { setDefaultDates(); } catch(e) {}
+    try { carregarRegistrosHoje(); } catch(e) {}
+    try { carregarHistorico(); } catch(e) {}
+    try { carregarAjustes(); } catch(e) {}
+    if (isAdmin) {
+      try { carregarBancoHoras(); } catch(e) {}
+      try { carregarColaboradoresAdmin(); } catch(e) {}
+    }
+
   } else {
-    log('ℹ️  onAuthStateChanged: nenhum usuário logado');
+    document.getElementById('login-screen').style.display = 'flex';
+    document.getElementById('app').style.display = 'none';
+    if (btn) { btn.textContent = 'Entrar'; btn.disabled = false; }
+    currentUser = null; currentUserData = null;
   }
 });
 
-async function testar() {
-  const email = document.getElementById('email').value.trim();
-  const senha = document.getElementById('senha').value;
-  log('→ Tentando login com: ' + email);
+async function fazerLogin() {
+  const email = document.getElementById('login-email').value.trim();
+  const senha = document.getElementById('login-senha').value;
+  const errEl = document.getElementById('login-error');
+  const btn = document.getElementById('btn-login');
+  errEl.textContent = '';
+  errEl.style.color = 'var(--muted)';
+  if (!email || !senha) {
+    errEl.style.color = 'var(--danger)';
+    errEl.textContent = 'Preencha e-mail e senha.';
+    return;
+  }
+  btn.textContent = 'Entrando...'; btn.disabled = true;
   try {
-    const cred = await auth.signInWithEmailAndPassword(email, senha);
-    log('✅ signInWithEmailAndPassword OK: ' + cred.user.email);
+    await auth.signInWithEmailAndPassword(email, senha);
   } catch(e) {
-    log('❌ Erro: [' + e.code + '] ' + e.message);
+    btn.textContent = 'Entrar'; btn.disabled = false;
+    errEl.style.color = 'var(--danger)';
+    const msgs = {
+      'auth/user-not-found':        'Usuário não encontrado.',
+      'auth/wrong-password':        'Senha incorreta.',
+      'auth/invalid-email':         'E-mail inválido.',
+      'auth/invalid-credential':    'E-mail ou senha incorretos.',
+      'auth/too-many-requests':     'Muitas tentativas. Aguarde alguns minutos.',
+      'auth/network-request-failed':'Sem conexão com a internet.',
+      'auth/unauthorized-domain':   'Domínio não autorizado no Firebase.'
+    };
+    errEl.textContent = msgs[e.code] || ('Erro: ' + (e.message || e.code));
   }
 }
+
+async function fazerLogout() {
+  pararCamera();
+  await auth.signOut();
+}
+
+// ─── TABS ───
+function changeTab(tab) {
+  document.querySelectorAll('#main-tabs .tab-btn').forEach((b,i) => {
+    b.classList.toggle('active', b.getAttribute('onclick').includes(tab));
+  });
+  document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+  document.getElementById('tab-' + tab).classList.add('active');
+  if (tab === 'admin') carregarColaboradoresAdmin();
+}
+
+function changeAdminTab(tab) {
+  document.querySelectorAll('#tab-admin .tabs .tab-btn').forEach(b => {
+    b.classList.toggle('active', b.getAttribute('onclick').includes(tab));
+  });
+  ['admin-colaboradores','admin-historico-admin','admin-ajustes-admin','admin-banco-admin','admin-relatorio-admin'].forEach(id => {
+    document.getElementById(id).style.display = 'none';
+  });
+  document.getElementById('admin-' + tab).style.display = 'block';
+  if (tab === 'ajustes-admin') carregarAjustesAdmin();
+  if (tab === 'banco-admin' || tab === 'relatorio-admin') carregarColabSelect();
+  if (tab === 'historico-admin') { carregarColabSelectHist(); setDefaultDatesAdmin(); }
+}
+
+// ─── CAMERA ───
+async function toggleCamera() {
+  const section = document.getElementById('camera-section');
+  if (section.style.display === 'none') {
+    section.style.display = 'block';
+    await iniciarCamera();
+  } else {
+    section.style.display = 'none';
+    pararCamera();
+  }
+}
+async function iniciarCamera() {
+  try {
+    cameraStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } });
+    const video = document.getElementById('camera-video');
+    video.srcObject = cameraStream;
+    video.style.display = 'block';
+  } catch(e) { toast('Câmera não disponível', 'error'); }
+}
+function pararCamera() {
+  if (cameraStream) { cameraStream.getTracks().forEach(t => t.stop()); cameraStream = null; }
+  document.getElementById('camera-video').style.display = 'none';
+}
+function tirarFoto() {
+  const video = document.getElementById('camera-video');
+  const canvas = document.getElementById('camera-canvas');
+  canvas.width = video.videoWidth; canvas.height = video.videoHeight;
+  canvas.getContext('2d').drawImage(video, 0, 0);
+  capturedPhoto = canvas.toDataURL('image/jpeg', 0.7);
+  const preview = document.getElementById('photo-preview');
+  preview.src = capturedPhoto; preview.style.display = 'block';
+  toast('Foto capturada!', 'success');
+}
+function limparFoto() {
+  capturedPhoto = null;
+  document.getElementById('photo-preview').style.display = 'none';
+}
+
+// ─── PONTO ───
+const tipoLabel = { entrada:'Início do Trabalho', pausa_inicio:'Pausa p/ Almoço', pausa_fim:'Retorno do Almoço', saida:'Fim do Trabalho' };
+
+async function registrarPonto(tipo) {
+  if (!currentUser) return;
+  const now = new Date();
+  const data = {
+    uid: currentUser.uid,
+    nome: currentUserData.nome,
+    tipo, timestamp: now,
+    hora: now.toLocaleTimeString('pt-BR',{hour12:false}),
+    data: now.toLocaleDateString('pt-BR'),
+    dataISO: now.toISOString().slice(0,10),
+    origem: 'sistema',
+    fotoUrl: null
+  };
+  try {
+    if (capturedPhoto) {
+      const ref = storage.ref(`fotos/${currentUser.uid}/${Date.now()}.jpg`);
+      await ref.putString(capturedPhoto, 'data_url');
+      data.fotoUrl = await ref.getDownloadURL();
+    }
+    await db.collection('pontos').add(data);
+    toast(`✅ ${tipoLabel[tipo]} registrado às ${data.hora}`, 'success');
+    limparFoto();
+    carregarRegistrosHoje();
+    carregarHistorico();
+    carregarBancoHoras();
+  } catch(e) { toast('Erro ao registrar ponto: ' + e.message, 'error'); }
+}
+
+async function carregarRegistrosHoje() {
+  if (!currentUser) return;
+  const hoje = new Date().toISOString().slice(0,10);
+  const body = document.getElementById('registros-hoje');
+  try {
+    // Busca só por uid+dataISO, ordena no JS (evita índice composto)
+    const snap = await db.collection('pontos')
+      .where('uid','==',currentUser.uid)
+      .where('dataISO','==',hoje)
+      .get();
+    if (snap.empty) { body.innerHTML = '<div class="empty-state"><div class="icon">📭</div><p>Nenhum registro hoje.</p></div>'; return; }
+    const docs = [];
+    snap.forEach(d => docs.push(d.data()));
+    docs.sort((a,b) => a.hora.localeCompare(b.hora));
+    let html = '<div class="table-wrap"><table><thead><tr><th>Tipo</th><th>Horário</th><th>Foto</th></tr></thead><tbody>';
+    docs.forEach(r => {
+      const foto = r.fotoUrl ? `<img src="${r.fotoUrl}" class="photo-thumb" onclick="verFoto('${r.fotoUrl}')">` : '—';
+      html += `<tr><td>${tipoLabel[r.tipo]||r.tipo}</td><td><b>${r.hora}</b></td><td>${foto}</td></tr>`;
+    });
+    html += '</tbody></table></div>';
+    body.innerHTML = html;
+  } catch(e) {
+    body.innerHTML = `<div class="empty-state" style="color:var(--danger)">Erro ao carregar: ${e.message}</div>`;
+  }
+}
+
+// ─── HISTÓRICO ───
+function setDefaultDates() {
+  const hoje = new Date().toISOString().slice(0,10);
+  const mesStr = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().slice(0,10);
+  const set = (id, val) => { const el = document.getElementById(id); if (el) el.value = val; };
+  set('filtro-de', mesStr);
+  set('filtro-ate', hoje);
+  set('rel-de', mesStr);
+  set('rel-ate', hoje);
+  set('ajuste-data', hoje);
+}
+
+async function carregarHistorico() {
+  if (!currentUser) return;
+  const de = document.getElementById('filtro-de').value || '2000-01-01';
+  const ate = document.getElementById('filtro-ate').value || '2099-12-31';
+  const body = document.getElementById('historico-body');
+  body.innerHTML = '<tr><td colspan="5" class="loading">Carregando...</td></tr>';
+  try {
+    const snap = await db.collection('pontos')
+      .where('uid','==',currentUser.uid)
+      .where('dataISO','>=',de)
+      .where('dataISO','<=',ate)
+      .get();
+    if (snap.empty) { body.innerHTML = '<tr><td colspan="5" class="empty-state">Nenhum registro no período.</td></tr>'; return; }
+    const docs = [];
+    snap.forEach(d => docs.push(d.data()));
+    // Ordena por data desc, hora asc
+    docs.sort((a,b) => b.dataISO.localeCompare(a.dataISO) || a.hora.localeCompare(b.hora));
+    let html = '';
+    docs.forEach(r => {
+      const foto = r.fotoUrl ? `<img src="${r.fotoUrl}" class="photo-thumb" onclick="verFoto('${r.fotoUrl}')">` : '—';
+      const orig = r.origem === 'ajuste' ? '<span class="badge badge-yellow">Ajuste</span>' : '<span class="badge badge-blue">Sistema</span>';
+      html += `<tr><td>${r.data||r.dataISO}</td><td>${tipoLabel[r.tipo]||r.tipo}</td><td><b>${r.hora}</b></td><td>${foto}</td><td>${orig}</td></tr>`;
+    });
+    body.innerHTML = html;
+  } catch(e) {
+    body.innerHTML = `<tr><td colspan="5" style="color:var(--danger);padding:12px">Erro: ${e.message}</td></tr>`;
+  }
+}
+
+async function filtrarHistorico() { await carregarHistorico(); }
+
+// ─── BANCO DE HORAS ───
+async function carregarBancoHoras() {
+  if (!currentUser || !currentUserData) return;
+  const now = new Date();
+  const mesInicio = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0,10);
+  const hoje = now.toISOString().slice(0,10);
+
+  try {
+    const snap = await db.collection('pontos')
+      .where('uid','==',currentUser.uid)
+      .where('dataISO','>=',mesInicio)
+      .where('dataISO','<=',hoje)
+      .get();
+
+    const porDia = {};
+    snap.forEach(d => {
+      const r = d.data();
+      if (!porDia[r.dataISO]) porDia[r.dataISO] = [];
+      porDia[r.dataISO].push(r);
+    });
+
+    let totalMinTrabalhado = 0;
+    Object.values(porDia).forEach(registros => {
+      registros.sort((a,b) => a.hora.localeCompare(b.hora));
+      const entrada = registros.find(r => r.tipo === 'entrada');
+      const pausa = registros.find(r => r.tipo === 'pausa_inicio');
+      const retorno = registros.find(r => r.tipo === 'pausa_fim');
+      const saida = registros.find(r => r.tipo === 'saida');
+      if (entrada && saida) {
+        let min = parseHora(saida.hora) - parseHora(entrada.hora);
+        if (pausa && retorno) min -= (parseHora(retorno.hora) - parseHora(pausa.hora));
+        if (min > 0) totalMinTrabalhado += min;
+      }
+    });
+
+    const diasUteis = diasUteisNoMes(now.getFullYear(), now.getMonth());
+    const jornadaDiaria = (currentUserData.jornadaDiaria || 8) * 60;
+    const totalPrevisto = diasUteis * jornadaDiaria;
+
+    document.getElementById('stat-trabalhado').textContent = minParaHhMm(totalMinTrabalhado);
+    document.getElementById('stat-previsto').textContent = minParaHhMm(totalPrevisto);
+
+    const snapBanco = await db.collection('banco_horas').where('uid','==',currentUser.uid).get();
+    const bancoDocs = [];
+    snapBanco.forEach(d => bancoDocs.push(d.data()));
+    bancoDocs.sort((a,b) => (b.timestamp?.seconds||0) - (a.timestamp?.seconds||0));
+
+    let saldoMin = totalMinTrabalhado - totalPrevisto;
+    const body = document.getElementById('banco-body');
+    let html = '';
+    bancoDocs.forEach(r => {
+      const tipo = r.tipo === 'folga' ? '<span class="badge badge-yellow">Folga</span>' : '<span class="badge badge-green">Pagamento</span>';
+      html += `<tr><td>${r.data||'—'}</td><td>${tipo}</td><td>${minParaHhMm(r.minutos)}</td><td>${r.obs||'—'}</td></tr>`;
+      saldoMin -= r.minutos;
+    });
+
+    const saldoEl = document.getElementById('stat-saldo');
+    saldoEl.textContent = (saldoMin < 0 ? '-' : '+') + minParaHhMm(Math.abs(saldoMin));
+    saldoEl.className = 'val ' + (saldoMin >= 0 ? 'val-pos' : 'val-neg');
+    body.innerHTML = html || '<tr><td colspan="4" class="empty-state">Nenhum registro.</td></tr>';
+  } catch(e) {
+    console.warn('Banco de horas:', e.message);
+  }
+}
+
+function parseHora(hora) {
+  const [h,m] = hora.split(':').map(Number);
+  return h * 60 + (m||0);
+}
+function minParaHhMm(min) {
+  const h = Math.floor(Math.abs(min)/60), m = Math.abs(min)%60;
+  return `${h}h ${m}m`;
+}
+function diasUteisNoMes(ano, mes) {
+  const total = new Date(ano, mes+1, 0).getDate();
+  let count = 0;
+  for (let d = 1; d <= total; d++) {
+    const wd = new Date(ano, mes, d).getDay();
+    if (wd !== 0 && wd !== 6) count++;
+  }
+  return count;
+}
+
+// ─── AJUSTE ───
+async function enviarAjuste() {
+  const data = document.getElementById('ajuste-data').value;
+  const tipo = document.getElementById('ajuste-tipo').value;
+  const hora = document.getElementById('ajuste-hora').value;
+  const motivo = document.getElementById('ajuste-motivo').value;
+  if (!data || !tipo || !hora) { toast('Preencha todos os campos.', 'error'); return; }
+  await db.collection('ajustes').add({
+    uid: currentUser.uid, nome: currentUserData.nome,
+    email: currentUser.email, data, tipo, hora, motivo,
+    status: 'pendente', timestamp: new Date()
+  });
+  toast('✅ Solicitação enviada!', 'success');
+  document.getElementById('ajuste-hora').value = '';
+  document.getElementById('ajuste-motivo').value = '';
+  carregarAjustes();
+}
+
+async function carregarAjustes() {
+  if (!currentUser) return;
+  const snap = await db.collection('ajustes').where('uid','==',currentUser.uid).orderBy('timestamp','desc').get();
+  const body = document.getElementById('ajustes-body');
+  if (snap.empty) { body.innerHTML = '<tr><td colspan="4" class="empty-state">Nenhuma solicitação.</td></tr>'; return; }
+  let html = '';
+  snap.forEach(d => {
+    const r = d.data();
+    const statusBadge = r.status === 'aprovado' ? '<span class="badge badge-green">Aprovado</span>' :
+      r.status === 'rejeitado' ? '<span class="badge badge-red">Rejeitado</span>' :
+      '<span class="badge badge-yellow">Pendente</span>';
+    html += `<tr><td>${r.data}</td><td>${tipoLabel[r.tipo]||r.tipo}</td><td>${r.hora}</td><td>${statusBadge}</td></tr>`;
+  });
+  body.innerHTML = html;
+}
+
+// ─── ADMIN ───
+async function carregarColaboradoresAdmin() {
+  const snap = await db.collection('usuarios').orderBy('nome','asc').get();
+  colaboradoresCache = [];
+  let html = '';
+  snap.forEach(d => {
+    const r = { id: d.id, ...d.data() };
+    colaboradoresCache.push(r);
+    const status = r.status === 'ativo' ? '<span class="badge badge-green">Ativo</span>' : '<span class="badge badge-red">Inativo</span>';
+    html += `<tr>
+      <td>${r.nome||'—'}</td>
+      <td>${r.email||'—'}</td>
+      <td>${r.cargo||'—'}</td>
+      <td>${r.jornadaDiaria||8}h</td>
+      <td>${status}</td>
+      <td><button class="btn btn-ghost btn-sm" onclick="editarColab('${d.id}')">✏️ Editar</button></td>
+    </tr>`;
+  });
+  document.getElementById('colab-body').innerHTML = html || '<tr><td colspan="6" class="empty-state">Nenhum colaborador.</td></tr>';
+}
+
+function abrirModalColaborador() {
+  editandoColabId = null;
+  document.getElementById('modal-colab-title').textContent = 'Novo Colaborador';
+  ['colab-nome','colab-email','colab-senha','colab-cargo'].forEach(id => document.getElementById(id).value='');
+  document.getElementById('colab-jornada').value = '8';
+  document.getElementById('colab-status').value = 'ativo';
+  document.getElementById('colab-uid').value = '';
+  document.getElementById('colab-error').textContent = '';
+  document.getElementById('modal-colab').classList.add('open');
+}
+
+function editarColab(id) {
+  const colab = colaboradoresCache.find(c => c.id === id);
+  if (!colab) return;
+  editandoColabId = id;
+  document.getElementById('modal-colab-title').textContent = 'Editar Colaborador';
+  document.getElementById('colab-nome').value = colab.nome || '';
+  document.getElementById('colab-email').value = colab.email || '';
+  document.getElementById('colab-senha').value = '';
+  document.getElementById('colab-cargo').value = colab.cargo || '';
+  document.getElementById('colab-jornada').value = colab.jornadaDiaria || 8;
+  document.getElementById('colab-status').value = colab.status || 'ativo';
+  document.getElementById('colab-uid').value = colab.uid || '';
+  document.getElementById('colab-error').textContent = '';
+  document.getElementById('modal-colab').classList.add('open');
+}
+
+async function salvarColaborador() {
+  const nome = document.getElementById('colab-nome').value.trim();
+  const email = document.getElementById('colab-email').value.trim();
+  const senha = document.getElementById('colab-senha').value;
+  const cargo = document.getElementById('colab-cargo').value.trim();
+  const jornada = parseFloat(document.getElementById('colab-jornada').value) || 8;
+  const status = document.getElementById('colab-status').value;
+  const errEl = document.getElementById('colab-error');
+
+  if (!nome || !email) { errEl.textContent = 'Nome e e-mail são obrigatórios.'; return; }
+
+  try {
+    if (!editandoColabId) {
+      // Novo colaborador via API Admin (Firebase Functions) — aqui usamos createUserWithEmailAndPassword
+      // via secundária auth instance
+      if (!senha || senha.length < 6) { errEl.textContent = 'Senha mínimo 6 caracteres.'; return; }
+      const secondaryApp = firebase.initializeApp(firebaseConfig, 'secondary_' + Date.now());
+      const secondaryAuth = secondaryApp.auth();
+      const cred = await secondaryAuth.createUserWithEmailAndPassword(email, senha);
+      await secondaryAuth.signOut();
+      secondaryApp.delete();
+      await db.collection('usuarios').doc(cred.user.uid).set({ nome, email, cargo, jornadaDiaria: jornada, status, isAdmin: false });
+    } else {
+      await db.collection('usuarios').doc(editandoColabId).update({ nome, cargo, jornadaDiaria: jornada, status });
+    }
+    fecharModal('modal-colab');
+    toast('✅ Colaborador salvo!', 'success');
+    carregarColaboradoresAdmin();
+  } catch(e) {
+    const msgs = { 'auth/email-already-in-use': 'E-mail já cadastrado.', 'auth/invalid-email': 'E-mail inválido.' };
+    errEl.textContent = msgs[e.code] || e.message;
+  }
+}
+
+async function carregarAjustesAdmin() {
+  const body = document.getElementById('admin-ajustes-body');
+  body.innerHTML = '<tr><td colspan="6" class="loading">Carregando...</td></tr>';
+  try {
+    const snap = await db.collection('ajustes').where('status','==','pendente').get();
+    if (snap.empty) { body.innerHTML = '<tr><td colspan="6" class="empty-state">Nenhuma solicitação pendente.</td></tr>'; return; }
+    const docs = [];
+    snap.forEach(d => docs.push({ id: d.id, ...d.data() }));
+    docs.sort((a,b) => (a.timestamp?.seconds||0) - (b.timestamp?.seconds||0));
+    let html = '';
+    docs.forEach(r => {
+      html += `<tr>
+        <td>${r.nome}</td><td>${r.data}</td><td>${tipoLabel[r.tipo]||r.tipo}</td><td>${r.hora}</td>
+        <td>${r.motivo||'—'}</td>
+        <td>
+          <button class="btn btn-success btn-sm" onclick="responderAjuste('${r.id}','${r.uid}','${r.data}','${r.tipo}','${r.hora}','aprovar')">✅ Aprovar</button>
+          <button class="btn btn-danger btn-sm" style="margin-left:4px" onclick="responderAjuste('${r.id}','','','','','rejeitar')">✖️ Rejeitar</button>
+        </td>
+      </tr>`;
+    });
+    body.innerHTML = html;
+  } catch(e) {
+    body.innerHTML = `<tr><td colspan="6" style="color:var(--danger);padding:12px">Erro: ${e.message}</td></tr>`;
+  }
+}
+
+async function responderAjuste(id, uid, data, tipo, hora, acao) {
+  const ref = db.collection('ajustes').doc(id);
+  if (acao === 'aprovar') {
+    await db.collection('pontos').add({
+      uid, tipo, data: data.split('-').reverse().join('/'), dataISO: data,
+      hora, timestamp: new Date(data + 'T' + hora), origem: 'ajuste', fotoUrl: null,
+      nome: (colaboradoresCache.find(c=>c.id===uid)||{}).nome||'—'
+    });
+    await ref.update({ status: 'aprovado' });
+    toast('✅ Ajuste aprovado e ponto registrado!', 'success');
+  } else {
+    await ref.update({ status: 'rejeitado' });
+    toast('Ajuste rejeitado.', 'info');
+  }
+  carregarAjustesAdmin();
+}
+
+async function carregarColabSelectHist() {
+  const snap = await db.collection('usuarios').get();
+  const opts = ['<option value="">Todos</option>'];
+  snap.forEach(d => {
+    const r = d.data();
+    opts.push(`<option value="${d.id}">${r.nome||r.email}</option>`);
+  });
+  const sel = document.getElementById('admin-hist-colab');
+  if (sel) sel.innerHTML = opts.join('');
+}
+
+function setDefaultDatesAdmin() {
+  const hoje = new Date().toISOString().slice(0,10);
+  const mesInicio = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().slice(0,10);
+  const de = document.getElementById('admin-hist-de');
+  const ate = document.getElementById('admin-hist-ate');
+  if (de && !de.value) de.value = mesInicio;
+  if (ate && !ate.value) ate.value = hoje;
+}
+
+async function carregarHistoricoAdmin() {
+  const uid = document.getElementById('admin-hist-colab').value;
+  const de = document.getElementById('admin-hist-de').value || '2000-01-01';
+  const ate = document.getElementById('admin-hist-ate').value || '2099-12-31';
+  const body = document.getElementById('admin-hist-body');
+  body.innerHTML = '<tr><td colspan="6" class="loading">Carregando...</td></tr>';
+  try {
+    let query = db.collection('pontos').where('dataISO','>=',de).where('dataISO','<=',ate);
+    if (uid) query = query.where('uid','==',uid);
+    const snap = await query.get();
+    if (snap.empty) { body.innerHTML = '<tr><td colspan="6" class="empty-state">Nenhum registro no período.</td></tr>'; return; }
+    const docs = [];
+    snap.forEach(d => docs.push(d.data()));
+    docs.sort((a,b) => b.dataISO.localeCompare(a.dataISO) || a.hora.localeCompare(b.hora));
+    let html = '';
+    docs.forEach(r => {
+      const foto = r.fotoUrl ? `<img src="${r.fotoUrl}" class="photo-thumb" onclick="verFoto('${r.fotoUrl}')">` : '—';
+      const orig = r.origem === 'ajuste' ? '<span class="badge badge-yellow">Ajuste</span>' : '<span class="badge badge-blue">Sistema</span>';
+      html += `<tr><td>${r.data||r.dataISO}</td><td>${r.nome||'—'}</td><td>${tipoLabel[r.tipo]||r.tipo}</td><td><b>${r.hora}</b></td><td>${foto}</td><td>${orig}</td></tr>`;
+    });
+    body.innerHTML = html;
+  } catch(e) {
+    body.innerHTML = `<tr><td colspan="6" style="color:var(--danger);padding:12px">Erro: ${e.message}</td></tr>`;
+  }
+}
+  const snap = await db.collection('usuarios').where('status','==','ativo').orderBy('nome').get();
+  const opts = ['<option value="">Todos</option>'];
+  const opts2 = [];
+  snap.forEach(d => {
+    const r = d.data();
+    opts.push(`<option value="${d.id}">${r.nome}</option>`);
+    opts2.push(`<option value="${d.id}">${r.nome}</option>`);
+  });
+  const sel = document.getElementById('rel-colab-select');
+  if (sel) sel.innerHTML = opts.join('');
+  const sel2 = document.getElementById('banco-colab-select');
+  if (sel2) sel2.innerHTML = opts2.join('');
+}
+
+async function zerarBanco() {
+  const uid = document.getElementById('banco-colab-select').value;
+  const tipo = document.getElementById('banco-tipo-pag').value;
+  const horas = parseFloat(document.getElementById('banco-horas').value) || 0;
+  const obs = document.getElementById('banco-obs').value;
+  if (!uid || horas <= 0) { toast('Selecione colaborador e informe as horas.', 'error'); return; }
+  const now = new Date();
+  await db.collection('banco_horas').add({
+    uid, tipo, minutos: Math.round(horas * 60), obs,
+    data: now.toLocaleDateString('pt-BR'), timestamp: now
+  });
+  toast('✅ Banco de horas atualizado!', 'success');
+  document.getElementById('banco-horas').value = '';
+  document.getElementById('banco-obs').value = '';
+}
+
+// ─── PDF ───
+async function exportarPDF() {
+  const de = document.getElementById('filtro-de').value || '';
+  const ate = document.getElementById('filtro-ate').value || '';
+  try {
+    const snap = await db.collection('pontos')
+      .where('uid','==',currentUser.uid)
+      .where('dataISO','>=',de).where('dataISO','<=',ate)
+      .get();
+    const docs = [];
+    snap.forEach(d => docs.push(d.data()));
+    docs.sort((a,b) => a.dataISO.localeCompare(b.dataISO) || a.hora.localeCompare(b.hora));
+    gerarPDFPontos(docs, currentUserData.nome, de, ate);
+  } catch(e) { toast('Erro ao gerar PDF: ' + e.message, 'error'); }
+}
+
+function gerarPDFPontos(docs, nome, de, ate) {
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF();
+  const pageW = doc.internal.pageSize.getWidth();
+  let y = 20;
+
+  doc.setFillColor(20, 30, 60);
+  doc.rect(0, 0, pageW, 35, 'F');
+  doc.setTextColor(255,255,255);
+  doc.setFontSize(16); doc.setFont('helvetica','bold');
+  doc.text('RELATÓRIO DE PONTO', pageW/2, 16, { align:'center' });
+  doc.setFontSize(10); doc.setFont('helvetica','normal');
+  doc.text(`Atacado Óptico MG  |  Gerado em: ${new Date().toLocaleString('pt-BR')}`, pageW/2, 28, { align:'center' });
+
+  y = 48;
+  doc.setTextColor(30,30,50);
+  doc.setFontSize(11); doc.setFont('helvetica','bold');
+  doc.text(`Colaborador: ${nome}`, 14, y); y += 7;
+  doc.setFont('helvetica','normal'); doc.setFontSize(10);
+  doc.text(`Período: ${de ? formatDate(de) : '—'} a ${ate ? formatDate(ate) : '—'}`, 14, y); y += 12;
+
+  doc.setFillColor(79, 142, 247);
+  doc.rect(14, y, pageW-28, 8, 'F');
+  doc.setTextColor(255,255,255); doc.setFontSize(9); doc.setFont('helvetica','bold');
+  doc.text('Data', 16, y+5.5);
+  doc.text('Colaborador', 46, y+5.5);
+  doc.text('Tipo', 100, y+5.5);
+  doc.text('Horário', 155, y+5.5);
+  doc.text('Origem', 178, y+5.5);
+  y += 8;
+
+  doc.setFont('helvetica','normal'); doc.setFontSize(9);
+  docs.forEach((r, row) => {
+    if (y > 270) { doc.addPage(); y = 20; }
+    doc.setFillColor(row % 2 === 0 ? 245 : 255, row % 2 === 0 ? 247 : 255, row % 2 === 0 ? 255 : 255);
+    doc.rect(14, y, pageW-28, 7, 'F');
+    doc.setTextColor(30,30,50);
+    doc.text(r.data||'', 16, y+5);
+    doc.text((r.nome||'').slice(0,20), 46, y+5);
+    doc.text((tipoLabel[r.tipo]||r.tipo||'').slice(0,22), 100, y+5);
+    doc.text(r.hora||'', 155, y+5);
+    doc.text(r.origem||'', 178, y+5);
+    y += 7;
+  });
+
+  if (!docs.length) { doc.setTextColor(150,150,150); doc.text('Nenhum registro no período.', 14, y+10); }
+  y += 12;
+  doc.setFontSize(9); doc.setTextColor(120,120,130);
+  doc.text(`Total de registros: ${docs.length}`, 14, y);
+  doc.save(`relatorio_ponto_${nome.replace(/\s/g,'_')}_${de}_${ate}.pdf`);
+  toast('📄 PDF gerado com sucesso!', 'success');
+}
+
+function formatDate(iso) {
+  return iso.split('-').reverse().join('/');
+}
+
+// ─── UTILS ───
+function fecharModal(id) { document.getElementById(id).classList.remove('open'); }
+function verFoto(url) {
+  document.getElementById('foto-grande').src = url;
+  document.getElementById('modal-foto').classList.add('open');
+}
+
+let toastTimer;
+function toast(msg, type='info') {
+  const el = document.getElementById('toast');
+  el.textContent = msg; el.className = 'show ' + type;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.className = '', 3500);
+}
+
+// Fechar modal ao clicar fora
+document.querySelectorAll('.modal-overlay').forEach(m => {
+  m.addEventListener('click', e => { if (e.target === m) m.classList.remove('open'); });
+});
 </script>
 </body>
 </html>
