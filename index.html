@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Ponto Digital – Atacado Óptico </title>
+<title>Ponto Digital – Atacado Óptico MG</title>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
@@ -215,7 +215,7 @@
     <div class="login-logo">
       <div class="icon">⏱️</div>
       <h1>Ponto Digital</h1>
-      <p>Atacado Óptico </p>
+      <p>Atacado Óptico MG</p>
     </div>
     <div class="form-group">
       <label>E-mail</label>
@@ -607,55 +607,45 @@ setInterval(tickClock, 1000);
 tickClock();
 
 // ─── AUTH ───
-auth.onAuthStateChanged(async user => {
-  const btn = document.querySelector('#login-screen .btn-primary');
+auth.onAuthStateChanged(user => {
+  const btn = document.getElementById('btn-login');
   if (user) {
-    try {
-      currentUser = user;
-      isAdmin = ADMINS.includes(user.email);
+    // Entra IMEDIATAMENTE sem esperar Firestore
+    currentUser = user;
+    isAdmin = ADMINS.includes(user.email);
+    currentUserData = { nome: user.email.split('@')[0], cargo: '', jornadaDiaria: 8, status: 'ativo' };
 
-      // Busca dados do usuário no Firestore com timeout de segurança
-      let userData = null;
-      try {
-        const doc = await Promise.race([
-          db.collection('usuarios').doc(user.uid).get(),
-          new Promise((_,rej) => setTimeout(() => rej(new Error('timeout')), 8000))
-        ]);
-        userData = doc.exists ? doc.data() : null;
-      } catch(firestoreErr) {
-        console.warn('Firestore indisponível, usando dados básicos:', firestoreErr.message);
+    document.getElementById('login-screen').style.display = 'none';
+    document.getElementById('app').style.display = 'block';
+    document.getElementById('login-error').textContent = '';
+    document.getElementById('user-name-nav').textContent = currentUserData.nome;
+    document.getElementById('user-avatar').textContent = currentUserData.nome[0].toUpperCase();
+    if (btn) { btn.textContent = 'Entrar'; btn.disabled = false; }
+
+    if (isAdmin) {
+      document.querySelectorAll('.admin-tab').forEach(t => t.style.display = '');
+    }
+
+    // Busca nome real do Firestore em background (não bloqueia)
+    db.collection('usuarios').doc(user.uid).get().then(doc => {
+      if (doc.exists && doc.data().nome) {
+        currentUserData = doc.data();
+      } else {
+        db.collection('usuarios').doc(user.uid).set(
+          { nome: currentUserData.nome, email: user.email, cargo: '', jornadaDiaria: 8, status: 'ativo', isAdmin },
+          { merge: true }
+        ).catch(() => {});
       }
-
-      if (!userData) {
-        userData = { nome: user.email.split('@')[0], cargo: '', jornadaDiaria: 8, status: 'ativo' };
-        // Tenta criar o documento mas não bloqueia o login
-        db.collection('usuarios').doc(user.uid).set({
-          ...userData, email: user.email, isAdmin
-        }, { merge: true }).catch(e => console.warn('Não foi possível salvar usuário:', e.message));
-      }
-
-      currentUserData = userData;
-      document.getElementById('login-screen').style.display = 'none';
-      document.getElementById('app').style.display = 'block';
       document.getElementById('user-name-nav').textContent = currentUserData.nome || user.email;
       document.getElementById('user-avatar').textContent = (currentUserData.nome || user.email)[0].toUpperCase();
-      if (btn) { btn.textContent = 'Entrar'; btn.disabled = false; }
-      if (isAdmin) {
-        document.querySelectorAll('.admin-tab').forEach(t => t.style.display = '');
-      }
-      setDefaultDates();
-      carregarRegistrosHoje();
-      carregarHistorico();
-      carregarBancoHoras();
-      carregarAjustes();
-      if (isAdmin) carregarColaboradoresAdmin();
-    } catch(e) {
-      console.error('Erro no onAuthStateChanged:', e);
-      if (btn) { btn.textContent = 'Entrar'; btn.disabled = false; }
-      const errEl = document.getElementById('login-error');
-      errEl.style.color = 'var(--danger)';
-      errEl.textContent = 'Erro ao carregar dados: ' + e.message;
-    }
+    }).catch(() => {});
+
+    setDefaultDates();
+    carregarRegistrosHoje();
+    carregarHistorico();
+    carregarAjustes();
+    if (isAdmin) { carregarBancoHoras(); carregarColaboradoresAdmin(); }
+
   } else {
     document.getElementById('login-screen').style.display = 'flex';
     document.getElementById('app').style.display = 'none';
@@ -668,31 +658,30 @@ async function fazerLogin() {
   const email = document.getElementById('login-email').value.trim();
   const senha = document.getElementById('login-senha').value;
   const errEl = document.getElementById('login-error');
-  const btn = document.querySelector('#login-screen .btn-primary');
+  const btn = document.getElementById('btn-login');
   errEl.textContent = '';
   errEl.style.color = 'var(--muted)';
-  if (!email || !senha) { errEl.style.color='var(--danger)'; errEl.textContent = 'Preencha e-mail e senha.'; return; }
+  if (!email || !senha) {
+    errEl.style.color = 'var(--danger)';
+    errEl.textContent = 'Preencha e-mail e senha.';
+    return;
+  }
   btn.textContent = 'Entrando...'; btn.disabled = true;
-  errEl.textContent = 'Verificando credenciais...';
   try {
     await auth.signInWithEmailAndPassword(email, senha);
-    // onAuthStateChanged cuida do restante
   } catch(e) {
     btn.textContent = 'Entrar'; btn.disabled = false;
     errEl.style.color = 'var(--danger)';
     const msgs = {
-      'auth/user-not-found': 'Usuário não encontrado.',
-      'auth/wrong-password': 'Senha incorreta.',
-      'auth/invalid-email': 'E-mail inválido.',
-      'auth/invalid-credential': 'E-mail ou senha incorretos.',
-      'auth/too-many-requests': 'Muitas tentativas. Aguarde alguns minutos.',
-      'auth/network-request-failed': 'Sem conexão com a internet.',
-      'auth/unauthorized-domain': 'Domínio não autorizado no Firebase. Veja instruções abaixo.'
+      'auth/user-not-found':        'Usuário não encontrado.',
+      'auth/wrong-password':        'Senha incorreta.',
+      'auth/invalid-email':         'E-mail inválido.',
+      'auth/invalid-credential':    'E-mail ou senha incorretos.',
+      'auth/too-many-requests':     'Muitas tentativas. Aguarde alguns minutos.',
+      'auth/network-request-failed':'Sem conexão com a internet.',
+      'auth/unauthorized-domain':   'Domínio não autorizado no Firebase.'
     };
-    errEl.textContent = msgs[e.code] || ('Erro: ' + e.message);
-    if (e.code === 'auth/unauthorized-domain') {
-      document.getElementById('domain-help').style.display = 'block';
-    }
+    errEl.textContent = msgs[e.code] || ('Erro: ' + (e.message || e.code));
   }
 }
 
