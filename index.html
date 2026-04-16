@@ -223,10 +223,17 @@
     </div>
     <div class="form-group">
       <label>Senha</label>
-      <input type="password" id="login-senha" placeholder="••••••••">
+      <input type="password" id="login-senha" placeholder="••••••••" onkeydown="if(event.key==='Enter') fazerLogin()">
     </div>
-    <button class="btn btn-primary" onclick="fazerLogin()">Entrar</button>
-    <p class="error-msg" id="login-error"></p>
+    <button class="btn btn-primary" onclick="fazerLogin()" id="btn-login">Entrar</button>
+    <p id="login-error" style="font-size:13px;margin-top:10px;text-align:center"></p>
+    <div id="domain-help" style="display:none;margin-top:14px;background:#1a1200;border:1px solid var(--warn);border-radius:10px;padding:14px;font-size:12px;color:var(--warn);line-height:1.8">
+      <b>⚠️ Como corrigir "Domínio não autorizado":</b><br>
+      1. Acesse <b>console.firebase.google.com</b><br>
+      2. Selecione seu projeto → <b>Authentication</b> → <b>Settings</b><br>
+      3. Aba <b>"Authorized domains"</b> → <b>"Add domain"</b><br>
+      4. Adicione <b>localhost</b> (para uso local) ou o domínio do seu site
+    </div>
   </div>
 </div>
 
@@ -247,7 +254,7 @@
     <div class="tabs" id="main-tabs">
       <button class="tab-btn active" onclick="changeTab('ponto')">🕐 Bater Ponto</button>
       <button class="tab-btn" onclick="changeTab('historico')">📋 Histórico</button>
-      <button class="tab-btn" onclick="changeTab('banco')">⚖️ Banco de Horas</button>
+      <button class="tab-btn admin-tab banco-tab" onclick="changeTab('banco')" style="display:none">⚖️ Banco de Horas</button>
       <button class="tab-btn" onclick="changeTab('ajuste')">✏️ Solicitar Ajuste</button>
       <button class="tab-btn admin-tab" onclick="changeTab('admin')" style="display:none">⚙️ Admin</button>
     </div>
@@ -388,6 +395,7 @@
       <div class="section-title">⚙️ Administração</div>
       <div class="tabs" style="margin-bottom:20px">
         <button class="tab-btn active" onclick="changeAdminTab('colaboradores')">👥 Colaboradores</button>
+        <button class="tab-btn" onclick="changeAdminTab('historico-admin')">📋 Histórico</button>
         <button class="tab-btn" onclick="changeAdminTab('ajustes-admin')">✏️ Solicitações</button>
         <button class="tab-btn" onclick="changeAdminTab('banco-admin')">⚖️ Banco de Horas</button>
         <button class="tab-btn" onclick="changeAdminTab('relatorio-admin')">📄 Relatórios</button>
@@ -404,6 +412,36 @@
             <table>
               <thead><tr><th>Nome</th><th>E-mail</th><th>Cargo</th><th>Jornada (h/dia)</th><th>Status</th><th>Ações</th></tr></thead>
               <tbody id="colab-body"><tr><td colspan="6" class="loading">Carregando...</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- Histórico ADMIN -->
+      <div id="admin-historico-admin" style="display:none">
+        <div class="card-title" style="margin-bottom:16px">Histórico de Ponto — Todos os Colaboradores</div>
+        <div class="card">
+          <div class="flex gap-3" style="flex-wrap:wrap;margin-bottom:16px">
+            <div class="form-group" style="margin:0;flex:1;min-width:130px">
+              <label>Colaborador</label>
+              <select id="admin-hist-colab"><option value="">Todos</option></select>
+            </div>
+            <div class="form-group" style="margin:0;flex:1;min-width:120px">
+              <label>De</label>
+              <input type="date" id="admin-hist-de">
+            </div>
+            <div class="form-group" style="margin:0;flex:1;min-width:120px">
+              <label>Até</label>
+              <input type="date" id="admin-hist-ate">
+            </div>
+            <div style="display:flex;align-items:flex-end">
+              <button class="btn btn-primary btn-sm" onclick="carregarHistoricoAdmin()">🔍 Filtrar</button>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Data</th><th>Colaborador</th><th>Tipo</th><th>Horário</th><th>Foto</th><th>Origem</th></tr></thead>
+              <tbody id="admin-hist-body"><tr><td colspan="6" class="loading">Use o filtro acima para buscar.</td></tr></tbody>
             </table>
           </div>
         </div>
@@ -570,33 +608,58 @@ tickClock();
 
 // ─── AUTH ───
 auth.onAuthStateChanged(async user => {
+  const btn = document.querySelector('#login-screen .btn-primary');
   if (user) {
-    currentUser = user;
-    isAdmin = ADMINS.includes(user.email);
-    const doc = await db.collection('usuarios').doc(user.uid).get();
-    currentUserData = doc.exists ? doc.data() : { nome: user.email.split('@')[0], cargo: '', jornadaDiaria: 8 };
-    if (!doc.exists) {
-      await db.collection('usuarios').doc(user.uid).set({
-        nome: currentUserData.nome, email: user.email, cargo: '',
-        jornadaDiaria: 8, status: 'ativo', isAdmin
-      }, { merge: true });
+    try {
+      currentUser = user;
+      isAdmin = ADMINS.includes(user.email);
+
+      // Busca dados do usuário no Firestore com timeout de segurança
+      let userData = null;
+      try {
+        const doc = await Promise.race([
+          db.collection('usuarios').doc(user.uid).get(),
+          new Promise((_,rej) => setTimeout(() => rej(new Error('timeout')), 8000))
+        ]);
+        userData = doc.exists ? doc.data() : null;
+      } catch(firestoreErr) {
+        console.warn('Firestore indisponível, usando dados básicos:', firestoreErr.message);
+      }
+
+      if (!userData) {
+        userData = { nome: user.email.split('@')[0], cargo: '', jornadaDiaria: 8, status: 'ativo' };
+        // Tenta criar o documento mas não bloqueia o login
+        db.collection('usuarios').doc(user.uid).set({
+          ...userData, email: user.email, isAdmin
+        }, { merge: true }).catch(e => console.warn('Não foi possível salvar usuário:', e.message));
+      }
+
+      currentUserData = userData;
+      document.getElementById('login-screen').style.display = 'none';
+      document.getElementById('app').style.display = 'block';
+      document.getElementById('user-name-nav').textContent = currentUserData.nome || user.email;
+      document.getElementById('user-avatar').textContent = (currentUserData.nome || user.email)[0].toUpperCase();
+      if (btn) { btn.textContent = 'Entrar'; btn.disabled = false; }
+      if (isAdmin) {
+        document.querySelectorAll('.admin-tab').forEach(t => t.style.display = '');
+      }
+      setDefaultDates();
+      carregarRegistrosHoje();
+      carregarHistorico();
+      carregarBancoHoras();
+      carregarAjustes();
+      if (isAdmin) carregarColaboradoresAdmin();
+    } catch(e) {
+      console.error('Erro no onAuthStateChanged:', e);
+      if (btn) { btn.textContent = 'Entrar'; btn.disabled = false; }
+      const errEl = document.getElementById('login-error');
+      errEl.style.color = 'var(--danger)';
+      errEl.textContent = 'Erro ao carregar dados: ' + e.message;
     }
-    document.getElementById('login-screen').style.display = 'none';
-    document.getElementById('app').style.display = 'block';
-    document.getElementById('user-name-nav').textContent = currentUserData.nome || user.email;
-    document.getElementById('user-avatar').textContent = (currentUserData.nome || user.email)[0].toUpperCase();
-    if (isAdmin) {
-      document.querySelectorAll('.admin-tab').forEach(t => t.style.display = '');
-    }
-    carregarRegistrosHoje();
-    carregarHistorico();
-    carregarBancoHoras();
-    carregarAjustes();
-    if (isAdmin) carregarColaboradoresAdmin();
-    setDefaultDates();
   } else {
     document.getElementById('login-screen').style.display = 'flex';
     document.getElementById('app').style.display = 'none';
+    if (btn) { btn.textContent = 'Entrar'; btn.disabled = false; }
     currentUser = null; currentUserData = null;
   }
 });
@@ -604,12 +667,32 @@ auth.onAuthStateChanged(async user => {
 async function fazerLogin() {
   const email = document.getElementById('login-email').value.trim();
   const senha = document.getElementById('login-senha').value;
-  document.getElementById('login-error').textContent = '';
-  if (!email || !senha) { document.getElementById('login-error').textContent = 'Preencha e-mail e senha.'; return; }
+  const errEl = document.getElementById('login-error');
+  const btn = document.querySelector('#login-screen .btn-primary');
+  errEl.textContent = '';
+  errEl.style.color = 'var(--muted)';
+  if (!email || !senha) { errEl.style.color='var(--danger)'; errEl.textContent = 'Preencha e-mail e senha.'; return; }
+  btn.textContent = 'Entrando...'; btn.disabled = true;
+  errEl.textContent = 'Verificando credenciais...';
   try {
     await auth.signInWithEmailAndPassword(email, senha);
+    // onAuthStateChanged cuida do restante
   } catch(e) {
-    document.getElementById('login-error').textContent = 'E-mail ou senha inválidos.';
+    btn.textContent = 'Entrar'; btn.disabled = false;
+    errEl.style.color = 'var(--danger)';
+    const msgs = {
+      'auth/user-not-found': 'Usuário não encontrado.',
+      'auth/wrong-password': 'Senha incorreta.',
+      'auth/invalid-email': 'E-mail inválido.',
+      'auth/invalid-credential': 'E-mail ou senha incorretos.',
+      'auth/too-many-requests': 'Muitas tentativas. Aguarde alguns minutos.',
+      'auth/network-request-failed': 'Sem conexão com a internet.',
+      'auth/unauthorized-domain': 'Domínio não autorizado no Firebase. Veja instruções abaixo.'
+    };
+    errEl.textContent = msgs[e.code] || ('Erro: ' + e.message);
+    if (e.code === 'auth/unauthorized-domain') {
+      document.getElementById('domain-help').style.display = 'block';
+    }
   }
 }
 
@@ -632,12 +715,13 @@ function changeAdminTab(tab) {
   document.querySelectorAll('#tab-admin .tabs .tab-btn').forEach(b => {
     b.classList.toggle('active', b.getAttribute('onclick').includes(tab));
   });
-  ['admin-colaboradores','admin-ajustes-admin','admin-banco-admin','admin-relatorio-admin'].forEach(id => {
+  ['admin-colaboradores','admin-historico-admin','admin-ajustes-admin','admin-banco-admin','admin-relatorio-admin'].forEach(id => {
     document.getElementById(id).style.display = 'none';
   });
   document.getElementById('admin-' + tab).style.display = 'block';
   if (tab === 'ajustes-admin') carregarAjustesAdmin();
   if (tab === 'banco-admin' || tab === 'relatorio-admin') carregarColabSelect();
+  if (tab === 'historico-admin') { carregarColabSelectHist(); setDefaultDatesAdmin(); }
 }
 
 // ─── CAMERA ───
@@ -712,20 +796,27 @@ async function registrarPonto(tipo) {
 async function carregarRegistrosHoje() {
   if (!currentUser) return;
   const hoje = new Date().toISOString().slice(0,10);
-  const snap = await db.collection('pontos')
-    .where('uid','==',currentUser.uid)
-    .where('dataISO','==',hoje)
-    .orderBy('timestamp','asc').get();
   const body = document.getElementById('registros-hoje');
-  if (snap.empty) { body.innerHTML = '<div class="empty-state"><div class="icon">📭</div><p>Nenhum registro hoje.</p></div>'; return; }
-  let html = '<div class="table-wrap"><table><thead><tr><th>Tipo</th><th>Horário</th><th>Foto</th></tr></thead><tbody>';
-  snap.forEach(d => {
-    const r = d.data();
-    const foto = r.fotoUrl ? `<img src="${r.fotoUrl}" class="photo-thumb" onclick="verFoto('${r.fotoUrl}')">` : '—';
-    html += `<tr><td>${tipoLabel[r.tipo]||r.tipo}</td><td><b>${r.hora}</b></td><td>${foto}</td></tr>`;
-  });
-  html += '</tbody></table></div>';
-  body.innerHTML = html;
+  try {
+    // Busca só por uid+dataISO, ordena no JS (evita índice composto)
+    const snap = await db.collection('pontos')
+      .where('uid','==',currentUser.uid)
+      .where('dataISO','==',hoje)
+      .get();
+    if (snap.empty) { body.innerHTML = '<div class="empty-state"><div class="icon">📭</div><p>Nenhum registro hoje.</p></div>'; return; }
+    const docs = [];
+    snap.forEach(d => docs.push(d.data()));
+    docs.sort((a,b) => a.hora.localeCompare(b.hora));
+    let html = '<div class="table-wrap"><table><thead><tr><th>Tipo</th><th>Horário</th><th>Foto</th></tr></thead><tbody>';
+    docs.forEach(r => {
+      const foto = r.fotoUrl ? `<img src="${r.fotoUrl}" class="photo-thumb" onclick="verFoto('${r.fotoUrl}')">` : '—';
+      html += `<tr><td>${tipoLabel[r.tipo]||r.tipo}</td><td><b>${r.hora}</b></td><td>${foto}</td></tr>`;
+    });
+    html += '</tbody></table></div>';
+    body.innerHTML = html;
+  } catch(e) {
+    body.innerHTML = `<div class="empty-state" style="color:var(--danger)">Erro ao carregar: ${e.message}</div>`;
+  }
 }
 
 // ─── HISTÓRICO ───
@@ -745,23 +836,29 @@ async function carregarHistorico() {
   if (!currentUser) return;
   const de = document.getElementById('filtro-de').value || '2000-01-01';
   const ate = document.getElementById('filtro-ate').value || '2099-12-31';
-  const snap = await db.collection('pontos')
-    .where('uid','==',currentUser.uid)
-    .where('dataISO','>=',de)
-    .where('dataISO','<=',ate)
-    .orderBy('dataISO','desc')
-    .orderBy('timestamp','asc')
-    .get();
   const body = document.getElementById('historico-body');
-  if (snap.empty) { body.innerHTML = '<tr><td colspan="5" class="empty-state">Nenhum registro no período.</td></tr>'; return; }
-  let html = '';
-  snap.forEach(d => {
-    const r = d.data();
-    const foto = r.fotoUrl ? `<img src="${r.fotoUrl}" class="photo-thumb" onclick="verFoto('${r.fotoUrl}')">` : '—';
-    const orig = r.origem === 'ajuste' ? '<span class="badge badge-yellow">Ajuste</span>' : '<span class="badge badge-blue">Sistema</span>';
-    html += `<tr><td>${r.data}</td><td>${tipoLabel[r.tipo]||r.tipo}</td><td><b>${r.hora}</b></td><td>${foto}</td><td>${orig}</td></tr>`;
-  });
-  body.innerHTML = html;
+  body.innerHTML = '<tr><td colspan="5" class="loading">Carregando...</td></tr>';
+  try {
+    const snap = await db.collection('pontos')
+      .where('uid','==',currentUser.uid)
+      .where('dataISO','>=',de)
+      .where('dataISO','<=',ate)
+      .get();
+    if (snap.empty) { body.innerHTML = '<tr><td colspan="5" class="empty-state">Nenhum registro no período.</td></tr>'; return; }
+    const docs = [];
+    snap.forEach(d => docs.push(d.data()));
+    // Ordena por data desc, hora asc
+    docs.sort((a,b) => b.dataISO.localeCompare(a.dataISO) || a.hora.localeCompare(b.hora));
+    let html = '';
+    docs.forEach(r => {
+      const foto = r.fotoUrl ? `<img src="${r.fotoUrl}" class="photo-thumb" onclick="verFoto('${r.fotoUrl}')">` : '—';
+      const orig = r.origem === 'ajuste' ? '<span class="badge badge-yellow">Ajuste</span>' : '<span class="badge badge-blue">Sistema</span>';
+      html += `<tr><td>${r.data||r.dataISO}</td><td>${tipoLabel[r.tipo]||r.tipo}</td><td><b>${r.hora}</b></td><td>${foto}</td><td>${orig}</td></tr>`;
+    });
+    body.innerHTML = html;
+  } catch(e) {
+    body.innerHTML = `<tr><td colspan="5" style="color:var(--danger);padding:12px">Erro: ${e.message}</td></tr>`;
+  }
 }
 
 async function filtrarHistorico() { await carregarHistorico(); }
@@ -770,71 +867,65 @@ async function filtrarHistorico() { await carregarHistorico(); }
 async function carregarBancoHoras() {
   if (!currentUser || !currentUserData) return;
   const now = new Date();
-  const mesAtras = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0,10);
+  const mesInicio = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0,10);
   const hoje = now.toISOString().slice(0,10);
 
-  // Buscar pontos do mês
-  const snap = await db.collection('pontos')
-    .where('uid','==',currentUser.uid)
-    .where('dataISO','>=',mesAtras)
-    .where('dataISO','<=',hoje)
-    .orderBy('dataISO','asc')
-    .orderBy('timestamp','asc')
-    .get();
+  try {
+    const snap = await db.collection('pontos')
+      .where('uid','==',currentUser.uid)
+      .where('dataISO','>=',mesInicio)
+      .where('dataISO','<=',hoje)
+      .get();
 
-  // Calcular horas por dia
-  const porDia = {};
-  snap.forEach(d => {
-    const r = d.data();
-    if (!porDia[r.dataISO]) porDia[r.dataISO] = [];
-    porDia[r.dataISO].push(r);
-  });
+    const porDia = {};
+    snap.forEach(d => {
+      const r = d.data();
+      if (!porDia[r.dataISO]) porDia[r.dataISO] = [];
+      porDia[r.dataISO].push(r);
+    });
 
-  let totalMinTrabalhado = 0;
-  Object.values(porDia).forEach(registros => {
-    const entrada = registros.find(r => r.tipo === 'entrada');
-    const pausa = registros.find(r => r.tipo === 'pausa_inicio');
-    const retorno = registros.find(r => r.tipo === 'pausa_fim');
-    const saida = registros.find(r => r.tipo === 'saida');
-    if (entrada && saida) {
-      const e = parseHora(entrada.hora), s = parseHora(saida.hora);
-      let min = s - e;
-      if (pausa && retorno) {
-        const p = parseHora(pausa.hora), rt = parseHora(retorno.hora);
-        min -= (rt - p);
+    let totalMinTrabalhado = 0;
+    Object.values(porDia).forEach(registros => {
+      registros.sort((a,b) => a.hora.localeCompare(b.hora));
+      const entrada = registros.find(r => r.tipo === 'entrada');
+      const pausa = registros.find(r => r.tipo === 'pausa_inicio');
+      const retorno = registros.find(r => r.tipo === 'pausa_fim');
+      const saida = registros.find(r => r.tipo === 'saida');
+      if (entrada && saida) {
+        let min = parseHora(saida.hora) - parseHora(entrada.hora);
+        if (pausa && retorno) min -= (parseHora(retorno.hora) - parseHora(pausa.hora));
+        if (min > 0) totalMinTrabalhado += min;
       }
-      if (min > 0) totalMinTrabalhado += min;
-    }
-  });
+    });
 
-  // Dias úteis no mês
-  const diasUteis = diasUteisNoMes(now.getFullYear(), now.getMonth());
-  const jornadaDiaria = (currentUserData.jornadaDiaria || 8) * 60;
-  const totalPrevisto = diasUteis * jornadaDiaria;
+    const diasUteis = diasUteisNoMes(now.getFullYear(), now.getMonth());
+    const jornadaDiaria = (currentUserData.jornadaDiaria || 8) * 60;
+    const totalPrevisto = diasUteis * jornadaDiaria;
 
-  document.getElementById('stat-trabalhado').textContent = minParaHhMm(totalMinTrabalhado);
-  document.getElementById('stat-previsto').textContent = minParaHhMm(totalPrevisto);
+    document.getElementById('stat-trabalhado').textContent = minParaHhMm(totalMinTrabalhado);
+    document.getElementById('stat-previsto').textContent = minParaHhMm(totalPrevisto);
 
-  // Saldo banco (buscar entradas do banco)
-  const snapBanco = await db.collection('banco_horas')
-    .where('uid','==',currentUser.uid)
-    .orderBy('timestamp','desc').get();
-  
-  let saldoMin = totalMinTrabalhado - totalPrevisto;
-  const body = document.getElementById('banco-body');
-  let html = '';
+    const snapBanco = await db.collection('banco_horas').where('uid','==',currentUser.uid).get();
+    const bancoDocs = [];
+    snapBanco.forEach(d => bancoDocs.push(d.data()));
+    bancoDocs.sort((a,b) => (b.timestamp?.seconds||0) - (a.timestamp?.seconds||0));
 
-  snapBanco.forEach(d => {
-    const r = d.data();
-    const tipo = r.tipo === 'folga' ? '<span class="badge badge-yellow">Folga</span>' : '<span class="badge badge-green">Pagamento</span>';
-    html += `<tr><td>${r.data||'—'}</td><td>${tipo}</td><td>${minParaHhMm(r.minutos)}</td><td>${r.obs||'—'}</td></tr>`;
-    saldoMin -= r.minutos;
-  });
+    let saldoMin = totalMinTrabalhado - totalPrevisto;
+    const body = document.getElementById('banco-body');
+    let html = '';
+    bancoDocs.forEach(r => {
+      const tipo = r.tipo === 'folga' ? '<span class="badge badge-yellow">Folga</span>' : '<span class="badge badge-green">Pagamento</span>';
+      html += `<tr><td>${r.data||'—'}</td><td>${tipo}</td><td>${minParaHhMm(r.minutos)}</td><td>${r.obs||'—'}</td></tr>`;
+      saldoMin -= r.minutos;
+    });
 
-  const saldoEl = document.getElementById('stat-saldo');
-  saldoEl.textContent = (saldoMin < 0 ? '-' : '+') + minParaHhMm(Math.abs(saldoMin));
-  saldoEl.className = 'val ' + (saldoMin >= 0 ? 'val-pos' : 'val-neg');
-  body.innerHTML = html || '<tr><td colspan="4" class="empty-state">Nenhum registro.</td></tr>';
+    const saldoEl = document.getElementById('stat-saldo');
+    saldoEl.textContent = (saldoMin < 0 ? '-' : '+') + minParaHhMm(Math.abs(saldoMin));
+    saldoEl.className = 'val ' + (saldoMin >= 0 ? 'val-pos' : 'val-neg');
+    body.innerHTML = html || '<tr><td colspan="4" class="empty-state">Nenhum registro.</td></tr>';
+  } catch(e) {
+    console.warn('Banco de horas:', e.message);
+  }
 }
 
 function parseHora(hora) {
@@ -972,22 +1063,29 @@ async function salvarColaborador() {
 }
 
 async function carregarAjustesAdmin() {
-  const snap = await db.collection('ajustes').where('status','==','pendente').orderBy('timestamp','asc').get();
   const body = document.getElementById('admin-ajustes-body');
-  if (snap.empty) { body.innerHTML = '<tr><td colspan="6" class="empty-state">Nenhuma solicitação pendente.</td></tr>'; return; }
-  let html = '';
-  snap.forEach(d => {
-    const r = d.data();
-    html += `<tr>
-      <td>${r.nome}</td><td>${r.data}</td><td>${tipoLabel[r.tipo]||r.tipo}</td><td>${r.hora}</td>
-      <td>${r.motivo||'—'}</td>
-      <td>
-        <button class="btn btn-success btn-sm" onclick="responderAjuste('${d.id}','${r.uid}','${r.data}','${r.tipo}','${r.hora}','aprovar')">✅</button>
-        <button class="btn btn-danger btn-sm" style="margin-left:4px" onclick="responderAjuste('${d.id}','','','','','rejeitar')">✖️</button>
-      </td>
-    </tr>`;
-  });
-  body.innerHTML = html;
+  body.innerHTML = '<tr><td colspan="6" class="loading">Carregando...</td></tr>';
+  try {
+    const snap = await db.collection('ajustes').where('status','==','pendente').get();
+    if (snap.empty) { body.innerHTML = '<tr><td colspan="6" class="empty-state">Nenhuma solicitação pendente.</td></tr>'; return; }
+    const docs = [];
+    snap.forEach(d => docs.push({ id: d.id, ...d.data() }));
+    docs.sort((a,b) => (a.timestamp?.seconds||0) - (b.timestamp?.seconds||0));
+    let html = '';
+    docs.forEach(r => {
+      html += `<tr>
+        <td>${r.nome}</td><td>${r.data}</td><td>${tipoLabel[r.tipo]||r.tipo}</td><td>${r.hora}</td>
+        <td>${r.motivo||'—'}</td>
+        <td>
+          <button class="btn btn-success btn-sm" onclick="responderAjuste('${r.id}','${r.uid}','${r.data}','${r.tipo}','${r.hora}','aprovar')">✅ Aprovar</button>
+          <button class="btn btn-danger btn-sm" style="margin-left:4px" onclick="responderAjuste('${r.id}','','','','','rejeitar')">✖️ Rejeitar</button>
+        </td>
+      </tr>`;
+    });
+    body.innerHTML = html;
+  } catch(e) {
+    body.innerHTML = `<tr><td colspan="6" style="color:var(--danger);padding:12px">Erro: ${e.message}</td></tr>`;
+  }
 }
 
 async function responderAjuste(id, uid, data, tipo, hora, acao) {
@@ -1007,7 +1105,51 @@ async function responderAjuste(id, uid, data, tipo, hora, acao) {
   carregarAjustesAdmin();
 }
 
-async function carregarColabSelect() {
+async function carregarColabSelectHist() {
+  const snap = await db.collection('usuarios').get();
+  const opts = ['<option value="">Todos</option>'];
+  snap.forEach(d => {
+    const r = d.data();
+    opts.push(`<option value="${d.id}">${r.nome||r.email}</option>`);
+  });
+  const sel = document.getElementById('admin-hist-colab');
+  if (sel) sel.innerHTML = opts.join('');
+}
+
+function setDefaultDatesAdmin() {
+  const hoje = new Date().toISOString().slice(0,10);
+  const mesInicio = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().slice(0,10);
+  const de = document.getElementById('admin-hist-de');
+  const ate = document.getElementById('admin-hist-ate');
+  if (de && !de.value) de.value = mesInicio;
+  if (ate && !ate.value) ate.value = hoje;
+}
+
+async function carregarHistoricoAdmin() {
+  const uid = document.getElementById('admin-hist-colab').value;
+  const de = document.getElementById('admin-hist-de').value || '2000-01-01';
+  const ate = document.getElementById('admin-hist-ate').value || '2099-12-31';
+  const body = document.getElementById('admin-hist-body');
+  body.innerHTML = '<tr><td colspan="6" class="loading">Carregando...</td></tr>';
+  try {
+    let query = db.collection('pontos').where('dataISO','>=',de).where('dataISO','<=',ate);
+    if (uid) query = query.where('uid','==',uid);
+    const snap = await query.get();
+    if (snap.empty) { body.innerHTML = '<tr><td colspan="6" class="empty-state">Nenhum registro no período.</td></tr>'; return; }
+    const docs = [];
+    snap.forEach(d => docs.push(d.data()));
+    docs.sort((a,b) => b.dataISO.localeCompare(a.dataISO) || a.hora.localeCompare(b.hora));
+    let html = '';
+    docs.forEach(r => {
+      const foto = r.fotoUrl ? `<img src="${r.fotoUrl}" class="photo-thumb" onclick="verFoto('${r.fotoUrl}')">` : '—';
+      const orig = r.origem === 'ajuste' ? '<span class="badge badge-yellow">Ajuste</span>' : '<span class="badge badge-blue">Sistema</span>';
+      html += `<tr><td>${r.data||r.dataISO}</td><td>${r.nome||'—'}</td><td>${tipoLabel[r.tipo]||r.tipo}</td><td><b>${r.hora}</b></td><td>${foto}</td><td>${orig}</td></tr>`;
+    });
+    body.innerHTML = html;
+  } catch(e) {
+    body.innerHTML = `<tr><td colspan="6" style="color:var(--danger);padding:12px">Erro: ${e.message}</td></tr>`;
+  }
+}
   const snap = await db.collection('usuarios').where('status','==','ativo').orderBy('nome').get();
   const opts = ['<option value="">Todos</option>'];
   const opts2 = [];
@@ -1042,25 +1184,19 @@ async function zerarBanco() {
 async function exportarPDF() {
   const de = document.getElementById('filtro-de').value || '';
   const ate = document.getElementById('filtro-ate').value || '';
-  const snap = await db.collection('pontos')
-    .where('uid','==',currentUser.uid)
-    .where('dataISO','>=',de).where('dataISO','<=',ate)
-    .orderBy('dataISO','asc').orderBy('timestamp','asc').get();
-  gerarPDFPontos(snap, currentUserData.nome, de, ate);
+  try {
+    const snap = await db.collection('pontos')
+      .where('uid','==',currentUser.uid)
+      .where('dataISO','>=',de).where('dataISO','<=',ate)
+      .get();
+    const docs = [];
+    snap.forEach(d => docs.push(d.data()));
+    docs.sort((a,b) => a.dataISO.localeCompare(b.dataISO) || a.hora.localeCompare(b.hora));
+    gerarPDFPontos(docs, currentUserData.nome, de, ate);
+  } catch(e) { toast('Erro ao gerar PDF: ' + e.message, 'error'); }
 }
 
-async function gerarRelatorioAdmin() {
-  const uid = document.getElementById('rel-colab-select').value;
-  const de = document.getElementById('rel-de').value;
-  const ate = document.getElementById('rel-ate').value;
-  let query = db.collection('pontos').where('dataISO','>=',de).where('dataISO','<=',ate);
-  if (uid) query = query.where('uid','==',uid);
-  const snap = await query.orderBy('dataISO','asc').orderBy('timestamp','asc').get();
-  const nome = uid ? (colaboradoresCache.find(c=>c.id===uid)||{}).nome || 'Colaborador' : 'Todos os Colaboradores';
-  gerarPDFPontos(snap, nome, de, ate);
-}
-
-function gerarPDFPontos(snap, nome, de, ate) {
+function gerarPDFPontos(docs, nome, de, ate) {
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF();
   const pageW = doc.internal.pageSize.getWidth();
@@ -1081,7 +1217,6 @@ function gerarPDFPontos(snap, nome, de, ate) {
   doc.setFont('helvetica','normal'); doc.setFontSize(10);
   doc.text(`Período: ${de ? formatDate(de) : '—'} a ${ate ? formatDate(ate) : '—'}`, 14, y); y += 12;
 
-  // Header tabela
   doc.setFillColor(79, 142, 247);
   doc.rect(14, y, pageW-28, 8, 'F');
   doc.setTextColor(255,255,255); doc.setFontSize(9); doc.setFont('helvetica','bold');
@@ -1093,9 +1228,7 @@ function gerarPDFPontos(snap, nome, de, ate) {
   y += 8;
 
   doc.setFont('helvetica','normal'); doc.setFontSize(9);
-  let row = 0;
-  snap.forEach(d => {
-    const r = d.data();
+  docs.forEach((r, row) => {
     if (y > 270) { doc.addPage(); y = 20; }
     doc.setFillColor(row % 2 === 0 ? 245 : 255, row % 2 === 0 ? 247 : 255, row % 2 === 0 ? 255 : 255);
     doc.rect(14, y, pageW-28, 7, 'F');
@@ -1105,15 +1238,13 @@ function gerarPDFPontos(snap, nome, de, ate) {
     doc.text((tipoLabel[r.tipo]||r.tipo||'').slice(0,22), 100, y+5);
     doc.text(r.hora||'', 155, y+5);
     doc.text(r.origem||'', 178, y+5);
-    y += 7; row++;
+    y += 7;
   });
 
-  if (snap.size === 0) { doc.setTextColor(150,150,150); doc.text('Nenhum registro no período.', 14, y+10); }
-
+  if (!docs.length) { doc.setTextColor(150,150,150); doc.text('Nenhum registro no período.', 14, y+10); }
   y += 12;
   doc.setFontSize(9); doc.setTextColor(120,120,130);
-  doc.text(`Total de registros: ${snap.size}`, 14, y);
-
+  doc.text(`Total de registros: ${docs.length}`, 14, y);
   doc.save(`relatorio_ponto_${nome.replace(/\s/g,'_')}_${de}_${ate}.pdf`);
   toast('📄 PDF gerado com sucesso!', 'success');
 }
