@@ -61,10 +61,10 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min
 .ponto-btn.saida{background:rgba(248,113,113,.12);border-color:var(--danger);color:var(--danger)}
 .ponto-btn:hover:not(:disabled){transform:translateY(-2px);filter:brightness(1.15)}
 .ponto-btn:disabled{opacity:.3;cursor:not-allowed;transform:none!important}
-.camera-section{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:14px;margin-bottom:14px}
-#camera-video,#camera-canvas{width:100%;border-radius:8px;display:none}
-#photo-preview{width:100%;border-radius:8px;display:none;margin-top:8px}
-.camera-controls{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
+
+
+
+
 .table-wrap{overflow-x:auto}
 table{width:100%;border-collapse:collapse;font-size:13px}
 th{text-align:left;padding:9px 12px;color:var(--muted);font-weight:500;border-bottom:1px solid var(--border);white-space:nowrap}
@@ -100,7 +100,7 @@ tr:hover td{background:rgba(255,255,255,.02)}
 .loading{text-align:center;padding:32px;color:var(--muted)}
 .empty-state{text-align:center;padding:40px 20px;color:var(--muted)}
 .empty-state .icon{font-size:36px;margin-bottom:10px}
-.photo-thumb{width:34px;height:34px;border-radius:6px;object-fit:cover;cursor:pointer}
+
 .alert-warn{background:rgba(251,191,36,.1);border:1px solid var(--warn);border-radius:10px;padding:12px 16px;font-size:13px;color:var(--warn);margin-bottom:14px}
 .alert-info{background:rgba(79,142,247,.1);border:1px solid var(--accent);border-radius:10px;padding:12px 16px;font-size:13px;color:var(--accent);margin-bottom:14px}
 .saldo-row{display:flex;align-items:center;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--border);font-size:13px}
@@ -149,18 +149,6 @@ tr:hover td{background:rgba(255,255,255,.02)}
         <div class="clock-date" id="clock-date">—</div>
       </div>
       <div id="ponto-alerta"></div>
-      <div class="card">
-        <div class="card-header"><span class="card-title">📷 Foto (opcional)</span><button class="btn btn-ghost btn-sm" onclick="toggleCamera()">Ativar câmera</button></div>
-        <div class="camera-section" id="camera-section" style="display:none">
-          <video id="camera-video" autoplay playsinline></video>
-          <canvas id="camera-canvas" style="display:none"></canvas>
-          <img id="photo-preview" alt="foto">
-          <div class="camera-controls">
-            <button class="btn btn-success btn-sm" onclick="tirarFoto()">📸 Tirar Foto</button>
-            <button class="btn btn-ghost btn-sm" onclick="limparFoto()">🗑️ Limpar</button>
-          </div>
-        </div>
-      </div>
       <div class="ponto-btns">
         <button class="ponto-btn entrada" id="btn-entrada" onclick="registrarPonto('entrada')"><span class="icon">🟢</span>Início do Trabalho</button>
         <button class="ponto-btn pausa" id="btn-pausa_inicio" onclick="registrarPonto('pausa_inicio')"><span class="icon">🟡</span>Pausa Almoço</button>
@@ -184,8 +172,8 @@ tr:hover td{background:rgba(255,255,255,.02)}
           <button class="btn btn-ghost btn-sm" onclick="exportarPDF()">📄 PDF</button>
         </div>
         <div class="table-wrap">
-          <table><thead><tr><th>Data</th><th>Tipo</th><th>Horário</th><th>Foto</th><th>Origem</th><th>Status</th></tr></thead>
-          <tbody id="historico-body"><tr><td colspan="6" class="loading">Carregando...</td></tr></tbody></table>
+          <table><thead><tr><th>Data</th><th>Tipo</th><th>Horário</th><th>Origem</th><th>Status</th></tr></thead>
+          <tbody id="historico-body"><tr><td colspan="5" class="loading">Carregando...</td></tr></tbody></table>
         </div>
       </div>
       <div class="card">
@@ -261,8 +249,8 @@ tr:hover td{background:rgba(255,255,255,.02)}
             <button class="btn btn-primary btn-sm" onclick="carregarHistoricoAdmin()">🔍 Filtrar</button>
           </div>
           <div class="table-wrap">
-            <table><thead><tr><th>Data</th><th>Colaborador</th><th>Tipo</th><th>Horário</th><th>Foto</th><th>Origem</th><th>Status</th><th>Ações</th></tr></thead>
-            <tbody id="admin-hist-body"><tr><td colspan="8" class="loading">Use o filtro acima.</td></tr></tbody></table>
+            <table><thead><tr><th>Data</th><th>Colaborador</th><th>Tipo</th><th>Horário</th><th>Origem</th><th>Status</th><th>Ações</th></tr></thead>
+            <tbody id="admin-hist-body"><tr><td colspan="7" class="loading">Use o filtro acima.</td></tr></tbody></table>
           </div>
         </div>
         <div class="card">
@@ -404,13 +392,6 @@ tr:hover td{background:rgba(255,255,255,.02)}
   </div>
 </div>
 
-<!-- MODAL FOTO -->
-<div class="modal-overlay" id="modal-foto">
-  <div class="modal-box" style="text-align:center;max-width:360px">
-    <div class="modal-title"><span>Foto do Registro</span><button class="modal-close" onclick="fecharModal('modal-foto')">✕</button></div>
-    <img id="foto-grande" style="width:100%;border-radius:10px;max-height:400px;object-fit:cover">
-  </div>
-</div>
 
 <div id="toast"></div>
 
@@ -420,7 +401,7 @@ tr:hover td{background:rgba(255,255,255,.02)}
 // ════════════════════════════════════════
 const firebaseConfig={apiKey:"AIzaSyD2ZyJ2FmcDVX_2Icrr1xSsbKzQ5eVW-Xs",authDomain:"ponto-1593b.firebaseapp.com",projectId:"ponto-1593b",storageBucket:"ponto-1593b.firebasestorage.app",messagingSenderId:"337444926131",appId:"1:337444926131:web:6c625d516ae9d927fbb6c6"};
 firebase.initializeApp(firebaseConfig);
-const auth=firebase.auth(),db=firebase.firestore(),storage=firebase.storage();
+const auth=firebase.auth(),db=firebase.firestore();
 const ADMINS=['atacadoopticomg.financeiro@gmail.com','carolline.bhz@gmail.com'];
 
 // ════════════════════════════════════════
@@ -445,7 +426,6 @@ function isFeriadoNacional(dataISO){
 // STATE
 // ════════════════════════════════════════
 let currentUser=null,currentUserData=null,isAdmin=false;
-let cameraStream=null,capturedPhoto=null;
 let colaboradoresCache=[],feriadosMunCache=[];
 const TL={entrada:'Início do Trabalho',pausa_inicio:'Pausa p/ Almoço',pausa_fim:'Retorno Almoço',saida:'Fim do Trabalho'};
 
@@ -500,7 +480,7 @@ async function fazerLogin(){
   try{await auth.signInWithEmailAndPassword(email,senha);}
   catch(e){btn.textContent='Entrar';btn.disabled=false;const m={'auth/user-not-found':'Usuário não encontrado.','auth/wrong-password':'Senha incorreta.','auth/invalid-credential':'E-mail ou senha incorretos.','auth/too-many-requests':'Muitas tentativas. Aguarde.','auth/network-request-failed':'Sem conexão.'};err.textContent=m[e.code]||'Erro: '+(e.message||e.code);}
 }
-async function fazerLogout(){pararCamera();await auth.signOut();}
+async function fazerLogout(){await auth.signOut();}
 
 // ════════════════════════════════════════
 // TABS
@@ -526,12 +506,6 @@ function changeAdminTab(tab){
 // ════════════════════════════════════════
 // CÂMERA
 // ════════════════════════════════════════
-async function toggleCamera(){const s=document.getElementById('camera-section');if(s.style.display==='none'){s.style.display='block';await iniciarCamera();}else{s.style.display='none';pararCamera();}}
-async function iniciarCamera(){try{cameraStream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'user'}});const v=document.getElementById('camera-video');v.srcObject=cameraStream;v.style.display='block';}catch(e){toast('Câmera não disponível','error');}}
-function pararCamera(){if(cameraStream){cameraStream.getTracks().forEach(t=>t.stop());cameraStream=null;}document.getElementById('camera-video').style.display='none';}
-function tirarFoto(){const v=document.getElementById('camera-video'),c=document.getElementById('camera-canvas');c.width=v.videoWidth;c.height=v.videoHeight;c.getContext('2d').drawImage(v,0,0);capturedPhoto=c.toDataURL('image/jpeg',.7);const p=document.getElementById('photo-preview');p.src=capturedPhoto;p.style.display='block';toast('Foto capturada!','success');}
-function limparFoto(){capturedPhoto=null;document.getElementById('photo-preview').style.display='none';}
-
 // ════════════════════════════════════════
 // HELPERS DE DATA / ESCALA
 // ════════════════════════════════════════
@@ -609,8 +583,8 @@ async function carregarPontoHoje(){
     setBtn('saida',temEntrada&&!temSaida&&(isSab||temRetorno||!temPausa));
 
     if(!docs.length){body.innerHTML='<div class="empty-state"><div class="icon">📭</div><p>Nenhum registro ainda hoje.</p></div>';return;}
-    let html='<div class="table-wrap"><table><thead><tr><th>Tipo</th><th>Horário</th><th>Foto</th></tr></thead><tbody>';
-    docs.forEach(r=>{const foto=r.fotoUrl?`<img src="${r.fotoUrl}" class="photo-thumb" onclick="verFoto('${r.fotoUrl}')">`:'—';html+=`<tr><td>${TL[r.tipo]||r.tipo}</td><td><b>${r.hora}</b></td><td>${foto}</td></tr>`;});
+    let html='<div class="table-wrap"><table><thead><tr><th>Tipo</th><th>Horário</th></tr></thead><tbody>';
+    docs.forEach(r=>{html+=`<tr><td>${TL[r.tipo]||r.tipo}</td><td><b>${r.hora}</b></td></tr>`;});
     html+='</tbody></table></div>';
     body.innerHTML=html;
   }catch(e){body.innerHTML=`<div class="empty-state" style="color:var(--danger)">Erro: ${e.message}</div>`;}
@@ -625,12 +599,11 @@ async function registrarPonto(tipo){
   if(isFeriadoHoje(hoje)){toast('Hoje é feriado. Registro não permitido.','error');return;}
   setBtn(tipo,false);
   const now=new Date();
-  const data={uid:currentUser.uid,nome:currentUserData.nome,tipo,timestamp:now,hora:now.toLocaleTimeString('pt-BR',{hour12:false}).slice(0,5),data:now.toLocaleDateString('pt-BR'),dataISO:hoje,origem:'sistema',fotoUrl:null,status:'ativo'};
+  const data={uid:currentUser.uid,nome:currentUserData.nome,tipo,timestamp:now,hora:now.toLocaleTimeString('pt-BR',{hour12:false}).slice(0,5),data:now.toLocaleDateString('pt-BR'),dataISO:hoje,origem:'sistema',status:'ativo'};
   try{
-    if(capturedPhoto){const ref=storage.ref(`fotos/${currentUser.uid}/${Date.now()}.jpg`);await ref.putString(capturedPhoto,'data_url');data.fotoUrl=await ref.getDownloadURL();}
     await db.collection('pontos').add(data);
     toast(`✅ ${TL[tipo]} registrado às ${data.hora}`,'success');
-    limparFoto();carregarPontoHoje();carregarHistorico();calcularBancoMes();
+    carregarPontoHoje();carregarHistorico();calcularBancoMes();
   }catch(e){toast('Erro: '+e.message,'error');setBtn(tipo,true);}
 }
 
@@ -661,10 +634,9 @@ async function carregarHistorico(){
     docs.sort((a,b)=>b.dataISO.localeCompare(a.dataISO)||a.hora.localeCompare(b.hora));
     let html='';
     docs.forEach(r=>{
-      const foto=r.fotoUrl?`<img src="${r.fotoUrl}" class="photo-thumb" onclick="verFoto('${r.fotoUrl}')">`:'—';
       const orig=r.origem==='ajuste'?'<span class="badge badge-yellow">Ajuste</span>':'<span class="badge badge-blue">Sistema</span>';
       const st=r.status==='inativo'?`<span class="badge badge-red">Inativo</span><div style="font-size:11px;color:var(--muted)">${r.justificativa||''}</div>`:'<span class="badge badge-green">Ativo</span>';
-      html+=`<tr style="${r.status==='inativo'?'opacity:.5':''}"><td>${r.data||r.dataISO}</td><td>${TL[r.tipo]||r.tipo}</td><td><b>${r.hora}</b></td><td>${foto}</td><td>${orig}</td><td>${st}</td></tr>`;
+      html+=`<tr style="${r.status==='inativo'?'opacity:.5':''}"><td>${r.data||r.dataISO}</td><td>${TL[r.tipo]||r.tipo}</td><td><b>${r.hora}</b></td><td>${orig}</td><td>${st}</td></tr>`;
     });
     body.innerHTML=html;
     calcularBancoMes();
@@ -843,11 +815,10 @@ async function carregarHistoricoAdmin(){
     docs.sort((a,b)=>b.dataISO.localeCompare(a.dataISO)||a.hora.localeCompare(b.hora));
     let html='';
     docs.forEach(r=>{
-      const foto=r.fotoUrl?`<img src="${r.fotoUrl}" class="photo-thumb" onclick="verFoto('${r.fotoUrl}')">`:'—';
       const orig=r.origem==='ajuste'?'<span class="badge badge-yellow">Ajuste</span>':'<span class="badge badge-blue">Sistema</span>';
       const st=r.status==='inativo'?'<span class="badge badge-red">Inativo</span>':'<span class="badge badge-green">Ativo</span>';
       const btnIn=r.status!=='inativo'?`<button class="btn btn-danger btn-sm" onclick="abrirModalInativar('${r.id}')">Inativar</button>`:'—';
-      html+=`<tr style="${r.status==='inativo'?'opacity:.5':''}"><td>${r.data||r.dataISO}</td><td>${r.nome||'—'}</td><td>${TL[r.tipo]||r.tipo}</td><td><b>${r.hora}</b></td><td>${foto}</td><td>${orig}</td><td>${st}</td><td>${btnIn}</td></tr>`;
+      html+=`<tr style="${r.status==='inativo'?'opacity:.5':''}"><td>${r.data||r.dataISO}</td><td>${r.nome||'—'}</td><td>${TL[r.tipo]||r.tipo}</td><td><b>${r.hora}</b></td><td>${orig}</td><td>${st}</td><td>${btnIn}</td></tr>`;
     });
     body.innerHTML=html;
   }catch(e){body.innerHTML=`<tr><td colspan="8" style="color:var(--danger);padding:12px">Erro: ${e.message}</td></tr>`;}
@@ -940,7 +911,7 @@ async function carregarAjustesAdmin(){
 
 async function responderAjuste(id,uid,data,tipo,hora,nome,acao){
   if(acao==='aprovar'){
-    await db.collection('pontos').add({uid,tipo,data:data.split('-').reverse().join('/'),dataISO:data,hora,timestamp:new Date(data+'T'+hora),origem:'ajuste',fotoUrl:null,status:'ativo',nome});
+    await db.collection('pontos').add({uid,tipo,data:data.split('-').reverse().join('/'),dataISO:data,hora,timestamp:new Date(data+'T'+hora),origem:'ajuste',status:'ativo',nome});
     await db.collection('ajustes').doc(id).update({status:'aprovado'});
     toast('✅ Ajuste aprovado!','success');
   }else{await db.collection('ajustes').doc(id).update({status:'rejeitado'});toast('Ajuste rejeitado.','info');}
@@ -1067,7 +1038,6 @@ function ph(h){const[hr,mn]=(h||'00:00').split(':').map(Number);return hr*60+(mn
 function hm(min){const h=Math.floor(Math.abs(min)/60),m=Math.abs(min)%60;return`${h}h ${m}m`;}
 function brDate(iso){return iso?iso.split('-').reverse().join('/'):'—';}
 function fecharModal(id){document.getElementById(id).classList.remove('open');}
-function verFoto(url){document.getElementById('foto-grande').src=url;document.getElementById('modal-foto').classList.add('open');}
 let _toastT;
 function toast(msg,type='info'){const el=document.getElementById('toast');el.textContent=msg;el.className='show '+type;clearTimeout(_toastT);_toastT=setTimeout(()=>el.className='',3500);}
 document.querySelectorAll('.modal-overlay').forEach(m=>m.addEventListener('click',e=>{if(e.target===m)m.classList.remove('open');}));
