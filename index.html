@@ -273,6 +273,15 @@ tr:hover td{background:rgba(255,255,255,.02)}
           <div class="form-group"><label>Observação</label><input type="text" id="banco-obs" placeholder="Ex: Folga dia 20/06"></div>
           <button class="btn btn-primary" onclick="zerarBanco()">✅ Registrar</button>
         </div>
+        <div class="card" style="max-width:520px">
+          <div class="card-title" style="margin-bottom:14px">🟡 Abonar Horas (empresa)</div>
+          <p class="text-muted" style="margin-bottom:14px">Use para lançar horas que a empresa está abonando, por exemplo quando o funcionário trabalhou menos e a empresa cobre a diferença.</p>
+          <div class="form-group"><label>Colaborador</label><select id="abono-colab-select"></select></div>
+          <div class="form-group"><label>Data de referência</label><input type="date" id="abono-data"></div>
+          <div class="form-group"><label>Horas a abonar (hh:mm)</label><input type="time" id="abono-horas" value="01:00"></div>
+          <div class="form-group"><label>Motivo do abono *</label><input type="text" id="abono-obs" placeholder="Ex: Saída antecipada autorizada"></div>
+          <button class="btn btn-warn" onclick="registrarAbono()">🟡 Registrar Abono</button>
+        </div>
         <div class="card">
           <div class="card-title" style="margin-bottom:14px">Saldo por Colaborador — Mês Atual</div>
           <div id="saldo-todos"><div class="loading">Carregando...</div></div>
@@ -336,6 +345,13 @@ tr:hover td{background:rgba(255,255,255,.02)}
             <div class="form-group" style="margin:0"><label>De</label><input type="date" id="rel-de"></div>
             <div class="form-group" style="margin:0"><label>Até</label><input type="date" id="rel-ate"></div>
           </div>
+          <div class="form-group"><label>Filtrar por status do registro</label>
+            <select id="rel-status">
+              <option value="">Todos</option>
+              <option value="ativo">Somente ativos</option>
+              <option value="inativo">Somente inativos</option>
+            </select>
+          </div>
           <button class="btn btn-primary" style="margin-top:14px" onclick="gerarRelatorioAdmin()">📄 Gerar PDF</button>
         </div>
       </div>
@@ -358,7 +374,7 @@ tr:hover td{background:rgba(255,255,255,.02)}
     </div>
     <div style="font-size:13px;font-weight:600;color:var(--muted);margin:4px 0 12px">⏰ Configuração de Jornada</div>
     <div class="grid-3">
-      <div class="form-group"><label>Horas/dia (seg-sex)</label><input type="number" id="colab-jornada" value="8" step="0.5" min="1" max="12"></div>
+      <div class="form-group"><label>Jornada/dia seg-sex (hh:mm)</label><input type="time" id="colab-jornada" value="08:48"></div>
       <div class="form-group"><label>Intervalo almoço (min)</label><input type="number" id="colab-almoco" value="60" step="15" min="0" max="180"></div>
       <div class="form-group"><label>Trabalha sábado?</label>
         <select id="colab-sabado" onchange="toggleSabadoOpts()">
@@ -368,7 +384,7 @@ tr:hover td{background:rgba(255,255,255,.02)}
         </select>
       </div>
     </div>
-    <div class="form-group" id="grupo-hs-sabado" style="display:none"><label>Horas no sábado (sem almoço)</label><input type="number" id="colab-hs-sabado" value="4" step="0.5" min="1" max="8"></div>
+    <div class="form-group" id="grupo-hs-sabado" style="display:none"><label>Jornada sábado (hh:mm, sem almoço)</label><input type="time" id="colab-hs-sabado" value="04:00"></div>
     <input type="hidden" id="colab-edit-id">
     <div class="flex gap-2 mt-4">
       <button class="btn btn-primary" onclick="salvarColab()">💾 Salvar</button>
@@ -442,7 +458,7 @@ auth.onAuthStateChanged(user=>{
   const btn=document.getElementById('btn-login');
   if(user){
     currentUser=user;isAdmin=ADMINS.includes(user.email);
-    currentUserData={nome:user.email.split('@')[0],cargo:'',jornadaDiaria:8,minAlmoco:60,sabado:'nao',hsSabado:4,status:'ativo'};
+    currentUserData={nome:user.email.split('@')[0],cargo:'',jornadaMin:528,minAlmoco:60,sabado:'nao',jornadaSabMin:240,status:'ativo'};
     document.getElementById('login-screen').style.display='none';
     document.getElementById('app').style.display='block';
     document.getElementById('login-error').textContent='';
@@ -496,7 +512,7 @@ function changeAdminTab(tab){
   ADMIN_TABS.forEach(id=>{const el=document.getElementById('admin-'+id);if(el)el.style.display='none';});
   document.getElementById('admin-'+tab).style.display='block';
   if(tab==='ajustes-admin'){carregarAjustesAdmin();populateSelect('inativar-colab-select',false);}
-  if(tab==='banco-admin'){populateSelect('banco-colab-select',false);carregarSaldoTodos();}
+  if(tab==='banco-admin'){populateSelect('banco-colab-select',false);populateSelect('abono-colab-select',false);carregarSaldoTodos();}
   if(tab==='feriados')carregarFeriados();
   if(tab==='atestados'){populateSelect('atestado-colab',false);carregarAtestados();}
   if(tab==='relatorio')populateSelect('rel-colab-select',true);
@@ -616,7 +632,7 @@ function setDefaultDates(){
   const s=(id,v)=>{const el=document.getElementById(id);if(el&&!el.value)el.value=v;};
   s('filtro-de',mes);s('filtro-ate',hoje);s('ajuste-data',hoje);
   s('rel-de',mes);s('rel-ate',hoje);s('admin-hist-de',mes);s('admin-hist-ate',hoje);
-  s('feriado-data',hoje);s('atestado-inicio',hoje);s('atestado-fim',hoje);s('inativar-data',hoje);
+  s('feriado-data',hoje);s('atestado-inicio',hoje);s('atestado-fim',hoje);s('inativar-data',hoje);s('abono-data',hoje);
 }
 
 async function carregarHistorico(){
@@ -653,11 +669,12 @@ async function calcularBancoMes(){
   const hoje=now.toISOString().slice(0,10);
   await carregarFeriadosMunCache();
   const atestados=await buscarAtestados(currentUser.uid);
+  const abonos=await buscarAbonos(currentUser.uid);
   try{
     const snap=await db.collection('pontos').where('uid','==',currentUser.uid).get();
     const porDia={};
     snap.forEach(d=>{const r={id:d.id,...d.data()};if(r.dataISO>=mesInicio&&r.dataISO<=hoje&&r.status!=='inativo'){if(!porDia[r.dataISO])porDia[r.dataISO]=[];porDia[r.dataISO].push(r);}});
-    const{minTrab,minPrev,detalhes}=calcularSaldoPeriodo(porDia,currentUserData,mesInicio,hoje,atestados);
+    const{minTrab,minPrev,detalhes}=calcularSaldoPeriodo(porDia,currentUserData,mesInicio,hoje,atestados,abonos);
     const saldo=minTrab-minPrev;
     const s1=document.getElementById('hist-trabalhado'),s2=document.getElementById('hist-previsto'),s3=document.getElementById('hist-saldo');
     if(s1)s1.textContent=hm(minTrab);if(s2)s2.textContent=hm(minPrev);
@@ -667,9 +684,13 @@ async function calcularBancoMes(){
       let h='';
       detalhes.forEach(d=>{
         let cor='var(--accent2)',label='';
-        if(d.tipo==='falta'){cor='var(--danger)';label=`-${hm(d.previsto)} (Falta${d.obs?' — '+d.obs:''})`;}
-        else if(d.tipo==='atestado'){cor='var(--muted)';label='Atestado';}
-        else{const s=d.saldo||0;cor=s>=0?'var(--accent2)':'var(--danger)';label=(s>=0?'+':'-')+hm(Math.abs(s));}
+        if(d.tipo==='falta'){
+          cor='var(--danger)';
+          label=`-${hm(d.previsto)} (Falta${d.obs?' — '+d.obs:''})`;
+          if(d.abono)label+=` | Abonado: +${hm(d.abono)}`;
+        }else if(d.tipo==='atestado'){cor='var(--muted)';label='Atestado';}
+        else if(d.tipo==='abono'){cor='var(--warn)';label=`Abonado${d.saldo>=0?' +'+hm(d.saldo):' '+hm(d.saldo)}`;}
+        else{const s=d.saldo||0;cor=s>=0?'var(--accent2)':'var(--danger)';label=(s>=0?'+':'-')+hm(Math.abs(s));if(d.abono)label+=` (inc. abono +${hm(d.abono)})`;}
         h+=`<div class="saldo-row"><span>${d.data}</span><span style="font-family:'DM Mono',monospace;font-size:12px;color:${cor}">${label}</span></div>`;
       });
       det.innerHTML=h;
@@ -677,8 +698,9 @@ async function calcularBancoMes(){
   }catch(e){console.warn('Banco:',e.message);}
 }
 
-function calcularSaldoPeriodo(porDia,userData,de,ate,atestados){
+function calcularSaldoPeriodo(porDia,userData,de,ate,atestados,abonos){
   let minTrab=0,minPrev=0;const detalhes=[];
+  const minAlmoco=userData.minAlmoco||60;
   let cur=new Date(de+'T12:00:00');const fim=new Date(ate+'T12:00:00');
   while(cur<=fim){
     const dISO=cur.toISOString().slice(0,10);
@@ -686,22 +708,39 @@ function calcularSaldoPeriodo(porDia,userData,de,ate,atestados){
     const feriado=isFeriadoNacional(dISO)||feriadosMunCache.some(f=>f.data===dISO);
     const emAtestado=atestados.some(a=>dISO>=a.inicio&&dISO<=a.fim);
     const isSab=getDiaSemana(dISO)===6;
+    // Jornada prevista em minutos (hh:mm salvo como jornadaMin)
+    const jornMin=isSab?(userData.jornadaSabMin||240):(userData.jornadaMin||528);
     if(escalado&&!feriado){
-      const jornMin=isSab?((userData.hsSabado||4)*60):((userData.jornadaDiaria||8)*60);
       minPrev+=jornMin;
-      if(emAtestado){minTrab+=jornMin;detalhes.push({data:brDate(dISO),tipo:'atestado',previsto:jornMin});}
-      else if(porDia[dISO]){
+      // Abono do dia
+      const abonoMin=(abonos||[]).filter(a=>a.dataISO===dISO).reduce((s,a)=>s+(a.minutos||0),0);
+      if(emAtestado){
+        minTrab+=jornMin;
+        detalhes.push({data:brDate(dISO),tipo:'atestado',previsto:jornMin});
+      }else if(porDia[dISO]){
         const regs=porDia[dISO].sort((a,b)=>a.hora.localeCompare(b.hora));
         const en=regs.find(r=>r.tipo==='entrada'),pa=regs.find(r=>r.tipo==='pausa_inicio'),re=regs.find(r=>r.tipo==='pausa_fim'),sa=regs.find(r=>r.tipo==='saida');
         if(en&&sa){
           let min=ph(sa.hora)-ph(en.hora);
-          // Desconta almoço real (se bateu os dois registros). Sábado nunca tem almoço.
-          if(!isSab&&pa&&re){min-=(ph(re.hora)-ph(pa.hora));}
+          // Sábado sem almoço. Nos outros dias:
+          // Se bateu pausa+retorno → desconta tempo real do intervalo
+          // Se não bateu nenhum → desconta o almoço configurado (para não contar almoço como trabalho)
+          if(!isSab){
+            if(pa&&re){min-=(ph(re.hora)-ph(pa.hora));}
+            else{min-=minAlmoco;}
+          }
           if(min<0)min=0;
+          min+=abonoMin;
           minTrab+=min;
-          detalhes.push({data:brDate(dISO),tipo:'normal',saldo:min-jornMin});
-        }else{detalhes.push({data:brDate(dISO),tipo:'falta',previsto:jornMin,obs:'Ponto incompleto'});}
-      }else{detalhes.push({data:brDate(dISO),tipo:'falta',previsto:jornMin});}
+          detalhes.push({data:brDate(dISO),tipo:abonoMin>0?'abono':'normal',saldo:min-jornMin,abono:abonoMin});
+        }else{
+          minTrab+=abonoMin;
+          detalhes.push({data:brDate(dISO),tipo:'falta',previsto:jornMin,obs:'Ponto incompleto',abono:abonoMin});
+        }
+      }else{
+        minTrab+=abonoMin;
+        detalhes.push({data:brDate(dISO),tipo:abonoMin>=jornMin?'abono':'falta',previsto:jornMin,abono:abonoMin});
+      }
     }
     cur.setDate(cur.getDate()+1);
   }
@@ -749,7 +788,7 @@ async function carregarColabAdmin(){
     docs.forEach(r=>{
       colaboradoresCache.push(r);
       const st=r.status==='ativo'?'<span class="badge badge-green">Ativo</span>':'<span class="badge badge-red">Inativo</span>';
-      html+=`<tr><td>${r.nome||'—'}</td><td style="font-size:12px">${r.email||'—'}</td><td>${r.cargo||'—'}</td><td>${r.jornadaDiaria||8}h</td><td>${sabMap[r.sabado||'nao']}</td><td>${r.minAlmoco||60}min</td><td>${st}</td><td><button class="btn btn-ghost btn-sm" onclick="editarColab('${r.id}')">✏️</button></td></tr>`;
+      html+=`<tr><td>${r.nome||'—'}</td><td style="font-size:12px">${r.email||'—'}</td><td>${r.cargo||'—'}</td><td>${minToTime(r.jornadaMin||528)}</td><td>${sabMap[r.sabado||'nao']}</td><td>${r.minAlmoco||60}min</td><td>${st}</td><td><button class="btn btn-ghost btn-sm" onclick="editarColab('${r.id}')">✏️</button></td></tr>`;
     });
     body.innerHTML=html||'<tr><td colspan="8" class="empty-state">Nenhum colaborador.</td></tr>';
   }catch(e){if(body)body.innerHTML=`<tr><td colspan="8" style="color:var(--danger);padding:12px">Erro: ${e.message}</td></tr>`;}
@@ -758,34 +797,44 @@ async function carregarColabAdmin(){
 function abrirModalColab(){
   document.getElementById('modal-colab-title').textContent='Novo Colaborador';
   ['colab-nome','colab-email','colab-senha','colab-cargo','colab-edit-id'].forEach(id=>document.getElementById(id).value='');
-  document.getElementById('colab-jornada').value=8;document.getElementById('colab-almoco').value=60;
-  document.getElementById('colab-hs-sabado').value=4;document.getElementById('colab-sabado').value='nao';
-  document.getElementById('colab-status').value='ativo';document.getElementById('grupo-hs-sabado').style.display='none';
-  document.getElementById('colab-error').textContent='';document.getElementById('modal-colab').classList.add('open');
+  document.getElementById('colab-jornada').value='08:48';
+  document.getElementById('colab-almoco').value=60;
+  document.getElementById('colab-hs-sabado').value='04:00';
+  document.getElementById('colab-sabado').value='nao';
+  document.getElementById('colab-status').value='ativo';
+  document.getElementById('grupo-hs-sabado').style.display='none';
+  document.getElementById('colab-error').textContent='';
+  document.getElementById('modal-colab').classList.add('open');
 }
 function editarColab(id){
   const c=colaboradoresCache.find(x=>x.id===id);if(!c)return;
   document.getElementById('modal-colab-title').textContent='Editar Colaborador';
-  document.getElementById('colab-nome').value=c.nome||'';document.getElementById('colab-email').value=c.email||'';
-  document.getElementById('colab-senha').value='';document.getElementById('colab-cargo').value=c.cargo||'';
-  document.getElementById('colab-jornada').value=c.jornadaDiaria||8;document.getElementById('colab-almoco').value=c.minAlmoco||60;
-  document.getElementById('colab-sabado').value=c.sabado||'nao';document.getElementById('colab-hs-sabado').value=c.hsSabado||4;
-  document.getElementById('colab-status').value=c.status||'ativo';document.getElementById('colab-edit-id').value=id;
+  document.getElementById('colab-nome').value=c.nome||'';
+  document.getElementById('colab-email').value=c.email||'';
+  document.getElementById('colab-senha').value='';
+  document.getElementById('colab-cargo').value=c.cargo||'';
+  document.getElementById('colab-jornada').value=minToTime(c.jornadaMin||528);
+  document.getElementById('colab-almoco').value=c.minAlmoco||60;
+  document.getElementById('colab-sabado').value=c.sabado||'nao';
+  document.getElementById('colab-hs-sabado').value=minToTime(c.jornadaSabMin||240);
+  document.getElementById('colab-status').value=c.status||'ativo';
+  document.getElementById('colab-edit-id').value=id;
   document.getElementById('grupo-hs-sabado').style.display=(c.sabado&&c.sabado!=='nao')?'block':'none';
-  document.getElementById('colab-error').textContent='';document.getElementById('modal-colab').classList.add('open');
+  document.getElementById('colab-error').textContent='';
+  document.getElementById('modal-colab').classList.add('open');
 }
 async function salvarColab(){
   const nome=document.getElementById('colab-nome').value.trim(),email=document.getElementById('colab-email').value.trim();
   const senha=document.getElementById('colab-senha').value,cargo=document.getElementById('colab-cargo').value.trim();
-  const jornadaDiaria=parseFloat(document.getElementById('colab-jornada').value)||8;
+  const jornadaMin=timeToMin(document.getElementById('colab-jornada').value)||528;
   const minAlmoco=parseInt(document.getElementById('colab-almoco').value)||60;
   const sabado=document.getElementById('colab-sabado').value;
-  const hsSabado=parseFloat(document.getElementById('colab-hs-sabado').value)||4;
+  const jornadaSabMin=timeToMin(document.getElementById('colab-hs-sabado').value)||240;
   const status=document.getElementById('colab-status').value;
   const editId=document.getElementById('colab-edit-id').value;
   const errEl=document.getElementById('colab-error');
   if(!nome||!email){errEl.textContent='Nome e e-mail obrigatórios.';return;}
-  const dados={nome,email,cargo,jornadaDiaria,minAlmoco,sabado,hsSabado,status,isAdmin:false};
+  const dados={nome,email,cargo,jornadaMin,minAlmoco,sabado,jornadaSabMin,status,isAdmin:false};
   try{
     if(!editId){
       if(!senha||senha.length<6){errEl.textContent='Senha mínimo 6 caracteres.';return;}
@@ -880,7 +929,8 @@ async function carregarSaldoTodos(){
     const porDia={};
     (allPts[c.id]||[]).forEach(r=>{if(r.dataISO>=mesInicio&&r.dataISO<=hoje&&r.status!=='inativo'){if(!porDia[r.dataISO])porDia[r.dataISO]=[];porDia[r.dataISO].push(r);}});
     const ats=await buscarAtestados(c.id);
-    const{minTrab,minPrev}=calcularSaldoPeriodo(porDia,c,mesInicio,hoje,ats);
+    const abs=await buscarAbonos(c.id);
+    const{minTrab,minPrev}=calcularSaldoPeriodo(porDia,c,mesInicio,hoje,ats,abs);
     const bruto=minTrab-minPrev,pago=pagos[c.id]||0,final=bruto-pago;
     const cBruto=bruto>=0?'var(--accent2)':'var(--danger)';
     const cFinal=final>=0?'var(--accent2)':'var(--danger)';
@@ -891,6 +941,26 @@ async function carregarSaldoTodos(){
 
 async function buscarAtestados(uid){
   try{const s=await db.collection('atestados').where('uid','==',uid).get();const d=[];s.forEach(x=>d.push({id:x.id,...x.data()}));return d;}catch(e){return[];}
+}
+
+async function buscarAbonos(uid){
+  try{const s=await db.collection('abonos').where('uid','==',uid).get();const d=[];s.forEach(x=>d.push({id:x.id,...x.data()}));return d;}catch(e){return[];}
+}
+
+async function registrarAbono(){
+  const uid=document.getElementById('abono-colab-select').value;
+  const dataISO=document.getElementById('abono-data').value;
+  const horasStr=document.getElementById('abono-horas').value;
+  const obs=document.getElementById('abono-obs').value.trim();
+  if(!uid||!dataISO||!horasStr){toast('Preencha todos os campos.','error');return;}
+  if(!obs){toast('Motivo do abono é obrigatório.','error');return;}
+  const minutos=timeToMin(horasStr);
+  if(minutos<=0){toast('Informe uma duração válida.','error');return;}
+  const now=new Date();
+  await db.collection('abonos').add({uid,dataISO,minutos,obs,data:brDate(dataISO),criadoEm:now,criadoPor:currentUser.email});
+  toast('✅ Abono registrado!','success');
+  document.getElementById('abono-obs').value='';
+  carregarSaldoTodos();
 }
 
 // ════════════════════════════════════════
@@ -998,11 +1068,17 @@ async function exportarPDF(){
 async function gerarRelatorioAdmin(){
   const uid=document.getElementById('rel-colab-select').value;
   const de=document.getElementById('rel-de').value,ate=document.getElementById('rel-ate').value;
+  const statusFiltro=document.getElementById('rel-status').value;
   const snap=await db.collection('pontos').get();
-  const docs=[];snap.forEach(d=>{const r=d.data();if(r.dataISO>=de&&r.dataISO<=ate&&(!uid||r.uid===uid))docs.push(r);});
+  const docs=[];
+  snap.forEach(d=>{
+    const r=d.data();
+    if(r.dataISO>=de&&r.dataISO<=ate&&(!uid||r.uid===uid)&&(!statusFiltro||r.status===statusFiltro||(!r.status&&statusFiltro==='ativo')))docs.push(r);
+  });
   docs.sort((a,b)=>a.dataISO.localeCompare(b.dataISO)||a.hora.localeCompare(b.hora));
   const nome=uid?(colaboradoresCache.find(c=>c.id===uid)?.nome||'Colaborador'):'Todos';
-  montarPDF(docs,nome,de,ate);
+  const filtroLabel=statusFiltro?` (${statusFiltro==='ativo'?'Somente ativos':'Somente inativos'})`:'';
+  montarPDF(docs,nome+filtroLabel,de,ate);
 }
 function montarPDF(docs,nome,de,ate){
   const{jsPDF}=window.jspdf,doc=new jsPDF(),W=doc.internal.pageSize.getWidth();
@@ -1037,6 +1113,10 @@ function montarPDF(docs,nome,de,ate){
 function ph(h){const[hr,mn]=(h||'00:00').split(':').map(Number);return hr*60+(mn||0);}
 function hm(min){const h=Math.floor(Math.abs(min)/60),m=Math.abs(min)%60;return`${h}h ${m}m`;}
 function brDate(iso){return iso?iso.split('-').reverse().join('/'):'—';}
+// Converte "HH:MM" → minutos
+function timeToMin(t){if(!t)return 0;const[h,m]=(t||'00:00').split(':').map(Number);return(h||0)*60+(m||0);}
+// Converte minutos → "HH:MM"
+function minToTime(min){const m=Math.abs(Math.round(min||0));const h=Math.floor(m/60),mm=m%60;return`${String(h).padStart(2,'0')}:${String(mm).padStart(2,'0')}`;}
 function fecharModal(id){document.getElementById(id).classList.remove('open');}
 let _toastT;
 function toast(msg,type='info'){const el=document.getElementById('toast');el.textContent=msg;el.className='show '+type;clearTimeout(_toastT);_toastT=setTimeout(()=>el.className='',3500);}
