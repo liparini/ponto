@@ -234,8 +234,8 @@ tr:hover td{background:rgba(255,255,255,.02)}
         </div>
         <div class="card">
           <div class="table-wrap">
-            <table><thead><tr><th>Nome</th><th>E-mail</th><th>Cargo</th><th>H/dia</th><th>Sábado</th><th>Almoço</th><th>Status</th><th></th></tr></thead>
-            <tbody id="colab-body"><tr><td colspan="8" class="loading">Carregando...</td></tr></tbody></table>
+            <table><thead><tr><th>Nome</th><th>E-mail</th><th>Cargo</th><th>Vínculo</th><th>H/dia</th><th>Sábado</th><th>Almoço</th><th>Status</th><th></th></tr></thead>
+            <tbody id="colab-body"><tr><td colspan="9" class="loading">Carregando...</td></tr></tbody></table>
           </div>
         </div>
       </div>
@@ -372,19 +372,48 @@ tr:hover td{background:rgba(255,255,255,.02)}
       <div class="form-group"><label>Cargo</label><input type="text" id="colab-cargo"></div>
       <div class="form-group"><label>Status</label><select id="colab-status"><option value="ativo">Ativo</option><option value="inativo">Inativo</option></select></div>
     </div>
-    <div style="font-size:13px;font-weight:600;color:var(--muted);margin:4px 0 12px">⏰ Configuração de Jornada</div>
-    <div class="grid-3">
-      <div class="form-group"><label>Jornada/dia seg-sex (hh:mm)</label><input type="time" id="colab-jornada" value="08:48"></div>
-      <div class="form-group"><label>Intervalo almoço (min)</label><input type="number" id="colab-almoco" value="60" step="15" min="0" max="180"></div>
-      <div class="form-group"><label>Trabalha sábado?</label>
-        <select id="colab-sabado" onchange="toggleSabadoOpts()">
-          <option value="nao">Não trabalha</option>
-          <option value="alternado">Sábados alternados</option>
-          <option value="todos">Todo sábado</option>
-        </select>
-      </div>
+    <div style="font-size:13px;font-weight:600;color:var(--muted);margin:4px 0 12px">👤 Tipo de Vínculo</div>
+    <div class="form-group">
+      <select id="colab-vinculo" onchange="toggleVinculoOpts()">
+        <option value="fixo">CLT / Fixo — escala definida</option>
+        <option value="eventual">Eventual / Freelancer — trabalha quando chamado</option>
+      </select>
+      <small>Colaborador eventual não tem escala fixa. Falta não é registrada em dias não trabalhados.</small>
     </div>
-    <div class="form-group" id="grupo-hs-sabado" style="display:none"><label>Jornada sábado (hh:mm, sem almoço)</label><input type="time" id="colab-hs-sabado" value="04:00"></div>
+    <div id="grupo-jornada-fixa">
+      <div style="font-size:13px;font-weight:600;color:var(--muted);margin:4px 0 12px">⏰ Configuração de Jornada</div>
+      <div class="grid-3">
+        <div class="form-group"><label>Jornada/dia seg-sex (hh:mm)</label><input type="time" id="colab-jornada" value="08:48"></div>
+        <div class="form-group"><label>Intervalo de almoço</label>
+          <select id="colab-almoco-tipo" onchange="toggleAlmocoOpts()">
+            <option value="sem">Sem almoço</option>
+            <option value="fixo" selected>Fixo (sempre desconta)</option>
+          </select>
+        </div>
+        <div class="form-group"><label>Trabalha sábado?</label>
+          <select id="colab-sabado" onchange="toggleSabadoOpts()">
+            <option value="nao">Não trabalha</option>
+            <option value="alternado">Sábados alternados</option>
+            <option value="todos">Todo sábado</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-group" id="grupo-almoco-min"><label>Duração do almoço (min)</label><input type="number" id="colab-almoco" value="60" step="15" min="15" max="180"><small>Desconto automático quando não bater o ponto de almoço</small></div>
+      <div class="form-group" id="grupo-hs-sabado" style="display:none"><label>Jornada sábado (hh:mm, sem almoço)</label><input type="time" id="colab-hs-sabado" value="04:00"></div>
+    </div>
+    <div id="grupo-jornada-eventual" style="display:none">
+      <div style="font-size:13px;font-weight:600;color:var(--muted);margin:4px 0 12px">⏰ Jornada por dia trabalhado</div>
+      <div class="grid-2">
+        <div class="form-group"><label>Horas por dia chamado (hh:mm)</label><input type="time" id="colab-jornada-ev" value="08:00"></div>
+        <div class="form-group"><label>Intervalo de almoço</label>
+          <select id="colab-almoco-tipo-ev" onchange="toggleAlmocoOptsEv()">
+            <option value="sem">Sem almoço</option>
+            <option value="fixo" selected>Fixo (sempre desconta)</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-group" id="grupo-almoco-min-ev"><label>Duração do almoço (min)</label><input type="number" id="colab-almoco-ev" value="60" step="15" min="15" max="180"></div>
+    </div>
     <input type="hidden" id="colab-edit-id">
     <div class="flex gap-2 mt-4">
       <button class="btn btn-primary" onclick="salvarColab()">💾 Salvar</button>
@@ -529,7 +558,9 @@ function getDiaSemana(dataISO){return new Date(dataISO+'T12:00:00').getDay();}//
 
 function isEscalado(userData,dataISO){
   const wd=getDiaSemana(dataISO);
-  if(wd===0)return false;
+  if(wd===0)return false; // domingo nunca
+  // Eventual: pode trabalhar qualquer dia útil (seg-sab), nunca domingo
+  if((userData.vinculo||'fixo')==='eventual') return wd!==0;
   if(wd===6){
     const sab=userData.sabado||'nao';
     if(sab==='nao')return false;
@@ -591,12 +622,21 @@ async function carregarPontoHoje(){
     docs.sort((a,b)=>a.hora.localeCompare(b.hora));
     const tipos=new Set(docs.map(d=>d.tipo));
     const isSab=getDiaSemana(hoje)===6;
+    const almocoTipo=currentUserData.almocoTipo||'fixo'; // 'sem','fixo','eventual'
+    const semAlmoco=isSab||(almocoTipo==='sem');
     const temEntrada=tipos.has('entrada'),temPausa=tipos.has('pausa_inicio'),temRetorno=tipos.has('pausa_fim'),temSaida=tipos.has('saida');
 
     setBtn('entrada',!temEntrada&&!temSaida);
-    if(isSab){setBtn('pausa_inicio',false,'Sem almoço aos sábados');setBtn('pausa_fim',false,'Sem almoço aos sábados');}
-    else{setBtn('pausa_inicio',temEntrada&&!temPausa&&!temSaida);setBtn('pausa_fim',temPausa&&!temRetorno&&!temSaida);}
-    setBtn('saida',temEntrada&&!temSaida&&(isSab||temRetorno||!temPausa));
+    if(semAlmoco){
+      setBtn('pausa_inicio',false,isSab?'Sem almoço aos sábados':'Colaborador sem intervalo de almoço');
+      setBtn('pausa_fim',false,isSab?'Sem almoço aos sábados':'Colaborador sem intervalo de almoço');
+    }else{
+      // fixo ou eventual: pausa é opcional mas disponível
+      setBtn('pausa_inicio',temEntrada&&!temPausa&&!temSaida);
+      setBtn('pausa_fim',temPausa&&!temRetorno&&!temSaida);
+    }
+    // Saída: permite sair sem bater almoço se for eventual ou sem almoço
+    setBtn('saida',temEntrada&&!temSaida&&(semAlmoco||almocoTipo==='eventual'||temRetorno||!temPausa));
 
     if(!docs.length){body.innerHTML='<div class="empty-state"><div class="icon">📭</div><p>Nenhum registro ainda hoje.</p></div>';return;}
     let html='<div class="table-wrap"><table><thead><tr><th>Tipo</th><th>Horário</th></tr></thead><tbody>';
@@ -690,6 +730,7 @@ async function calcularBancoMes(){
           if(d.abono)label+=` | Abonado: +${hm(d.abono)}`;
         }else if(d.tipo==='atestado'){cor='var(--muted)';label='Atestado';}
         else if(d.tipo==='abono'){cor='var(--warn)';label=`Abonado${d.saldo>=0?' +'+hm(d.saldo):' '+hm(d.saldo)}`;}
+        else if(d.tipo==='eventual'){cor='var(--accent)';label=`Eventual — ${hm(d.trabalhado)} trabalhado`;}
         else{const s=d.saldo||0;cor=s>=0?'var(--accent2)':'var(--danger)';label=(s>=0?'+':'-')+hm(Math.abs(s));if(d.abono)label+=` (inc. abono +${hm(d.abono)})`;}
         h+=`<div class="saldo-row"><span>${d.data}</span><span style="font-family:'DM Mono',monospace;font-size:12px;color:${cor}">${label}</span></div>`;
       });
@@ -700,7 +741,6 @@ async function calcularBancoMes(){
 
 function calcularSaldoPeriodo(porDia,userData,de,ate,atestados,abonos){
   let minTrab=0,minPrev=0;const detalhes=[];
-  const minAlmoco=userData.minAlmoco||60;
   let cur=new Date(de+'T12:00:00');const fim=new Date(ate+'T12:00:00');
   while(cur<=fim){
     const dISO=cur.toISOString().slice(0,10);
@@ -711,35 +751,48 @@ function calcularSaldoPeriodo(porDia,userData,de,ate,atestados,abonos){
     // Jornada prevista em minutos (hh:mm salvo como jornadaMin)
     const jornMin=isSab?(userData.jornadaSabMin||240):(userData.jornadaMin||528);
     if(escalado&&!feriado){
-      minPrev+=jornMin;
+      const isEventual=(userData.vinculo||'fixo')==='eventual';
+      // Eventual não tem previsto fixo — previsto é zero; banco só sobe nos dias trabalhados
+      if(!isEventual) minPrev+=jornMin;
       // Abono do dia
       const abonoMin=(abonos||[]).filter(a=>a.dataISO===dISO).reduce((s,a)=>s+(a.minutos||0),0);
       if(emAtestado){
-        minTrab+=jornMin;
-        detalhes.push({data:brDate(dISO),tipo:'atestado',previsto:jornMin});
+        if(!isEventual){minTrab+=jornMin;detalhes.push({data:brDate(dISO),tipo:'atestado',previsto:jornMin});}
       }else if(porDia[dISO]){
         const regs=porDia[dISO].sort((a,b)=>a.hora.localeCompare(b.hora));
         const en=regs.find(r=>r.tipo==='entrada'),pa=regs.find(r=>r.tipo==='pausa_inicio'),re=regs.find(r=>r.tipo==='pausa_fim'),sa=regs.find(r=>r.tipo==='saida');
         if(en&&sa){
           let min=ph(sa.hora)-ph(en.hora);
-          // Sábado sem almoço. Nos outros dias:
-          // Se bateu pausa+retorno → desconta tempo real do intervalo
-          // Se não bateu nenhum → desconta o almoço configurado (para não contar almoço como trabalho)
+          const almocoTipo=userData.almocoTipo||'fixo';
+          const isSab=getDiaSemana(dISO)===6;
           if(!isSab){
-            if(pa&&re){min-=(ph(re.hora)-ph(pa.hora));}
-            else{min-=minAlmoco;}
+            if(almocoTipo==='sem'){
+              // nada a descontar
+            }else{
+              // fixo: se bateu pausa+retorno desconta real, senão desconta configurado
+              if(pa&&re){min-=(ph(re.hora)-ph(pa.hora));}
+              else{min-=(userData.minAlmoco||60);}
+            }
           }
           if(min<0)min=0;
           min+=abonoMin;
           minTrab+=min;
-          detalhes.push({data:brDate(dISO),tipo:abonoMin>0?'abono':'normal',saldo:min-jornMin,abono:abonoMin});
+          if(isEventual){
+            // Eventual: previsto = o que trabalhou (saldo neutro, mas registra)
+            minPrev+=min;
+            detalhes.push({data:brDate(dISO),tipo:'eventual',trabalhado:min,saldo:0});
+          }else{
+            detalhes.push({data:brDate(dISO),tipo:abonoMin>0?'abono':'normal',saldo:min-jornMin,abono:abonoMin});
+          }
         }else{
           minTrab+=abonoMin;
-          detalhes.push({data:brDate(dISO),tipo:'falta',previsto:jornMin,obs:'Ponto incompleto',abono:abonoMin});
+          if(!isEventual) detalhes.push({data:brDate(dISO),tipo:'falta',previsto:jornMin,obs:'Ponto incompleto',abono:abonoMin});
         }
       }else{
+        // Não trabalhou
         minTrab+=abonoMin;
-        detalhes.push({data:brDate(dISO),tipo:abonoMin>=jornMin?'abono':'falta',previsto:jornMin,abono:abonoMin});
+        if(!isEventual) detalhes.push({data:brDate(dISO),tipo:abonoMin>=jornMin?'abono':'falta',previsto:jornMin,abono:abonoMin});
+        // Eventual: simplesmente não trabalhou, sem falta
       }
     }
     cur.setDate(cur.getDate()+1);
@@ -775,6 +828,13 @@ async function carregarAjustes(){
 // ADMIN – COLABORADORES
 // ════════════════════════════════════════
 function toggleSabadoOpts(){document.getElementById('grupo-hs-sabado').style.display=document.getElementById('colab-sabado').value!=='nao'?'block':'none';}
+function toggleAlmocoOpts(){document.getElementById('grupo-almoco-min').style.display=document.getElementById('colab-almoco-tipo').value==='fixo'?'block':'none';}
+function toggleAlmocoOptsEv(){document.getElementById('grupo-almoco-min-ev').style.display=document.getElementById('colab-almoco-tipo-ev').value==='fixo'?'block':'none';}
+function toggleVinculoOpts(){
+  const ev=document.getElementById('colab-vinculo').value==='eventual';
+  document.getElementById('grupo-jornada-fixa').style.display=ev?'none':'block';
+  document.getElementById('grupo-jornada-eventual').style.display=ev?'block':'none';
+}
 
 async function carregarColabAdmin(){
   const body=document.getElementById('colab-body');if(!body)return;
@@ -788,7 +848,9 @@ async function carregarColabAdmin(){
     docs.forEach(r=>{
       colaboradoresCache.push(r);
       const st=r.status==='ativo'?'<span class="badge badge-green">Ativo</span>':'<span class="badge badge-red">Inativo</span>';
-      html+=`<tr><td>${r.nome||'—'}</td><td style="font-size:12px">${r.email||'—'}</td><td>${r.cargo||'—'}</td><td>${minToTime(r.jornadaMin||528)}</td><td>${sabMap[r.sabado||'nao']}</td><td>${r.minAlmoco||60}min</td><td>${st}</td><td><button class="btn btn-ghost btn-sm" onclick="editarColab('${r.id}')">✏️</button></td></tr>`;
+      const almocoLabel={sem:'Sem almoço',fixo:`Fixo ${r.minAlmoco||60}min`}[r.almocoTipo||'fixo']||`${r.minAlmoco||60}min`;
+      const vinculoLabel=(r.vinculo||'fixo')==='eventual'?'<span class="badge badge-yellow">Eventual</span>':'<span class="badge badge-blue">CLT/Fixo</span>';
+      html+=`<tr><td>${r.nome||'—'}</td><td style="font-size:12px">${r.email||'—'}</td><td>${r.cargo||'—'}</td><td>${vinculoLabel}</td><td>${minToTime(r.jornadaMin||528)}</td><td>${sabMap[r.sabado||'nao']}</td><td>${almocoLabel}</td><td>${st}</td><td><button class="btn btn-ghost btn-sm" onclick="editarColab('${r.id}')">✏️</button></td></tr>`;
     });
     body.innerHTML=html||'<tr><td colspan="8" class="empty-state">Nenhum colaborador.</td></tr>';
   }catch(e){if(body)body.innerHTML=`<tr><td colspan="8" style="color:var(--danger);padding:12px">Erro: ${e.message}</td></tr>`;}
@@ -797,12 +859,21 @@ async function carregarColabAdmin(){
 function abrirModalColab(){
   document.getElementById('modal-colab-title').textContent='Novo Colaborador';
   ['colab-nome','colab-email','colab-senha','colab-cargo','colab-edit-id'].forEach(id=>document.getElementById(id).value='');
+  document.getElementById('colab-vinculo').value='fixo';
   document.getElementById('colab-jornada').value='08:48';
+  document.getElementById('colab-almoco-tipo').value='fixo';
   document.getElementById('colab-almoco').value=60;
+  document.getElementById('colab-jornada-ev').value='08:00';
+  document.getElementById('colab-almoco-tipo-ev').value='fixo';
+  document.getElementById('colab-almoco-ev').value=60;
   document.getElementById('colab-hs-sabado').value='04:00';
   document.getElementById('colab-sabado').value='nao';
   document.getElementById('colab-status').value='ativo';
   document.getElementById('grupo-hs-sabado').style.display='none';
+  document.getElementById('grupo-almoco-min').style.display='block';
+  document.getElementById('grupo-almoco-min-ev').style.display='block';
+  document.getElementById('grupo-jornada-fixa').style.display='block';
+  document.getElementById('grupo-jornada-eventual').style.display='none';
   document.getElementById('colab-error').textContent='';
   document.getElementById('modal-colab').classList.add('open');
 }
@@ -813,28 +884,54 @@ function editarColab(id){
   document.getElementById('colab-email').value=c.email||'';
   document.getElementById('colab-senha').value='';
   document.getElementById('colab-cargo').value=c.cargo||'';
+  const vinculo=c.vinculo||'fixo';
+  document.getElementById('colab-vinculo').value=vinculo;
+  // campos fixo
   document.getElementById('colab-jornada').value=minToTime(c.jornadaMin||528);
+  document.getElementById('colab-almoco-tipo').value=c.almocoTipo||'fixo';
   document.getElementById('colab-almoco').value=c.minAlmoco||60;
   document.getElementById('colab-sabado').value=c.sabado||'nao';
   document.getElementById('colab-hs-sabado').value=minToTime(c.jornadaSabMin||240);
+  // campos eventual
+  document.getElementById('colab-jornada-ev').value=minToTime(c.jornadaEvMin||480);
+  document.getElementById('colab-almoco-tipo-ev').value=c.almocoTipoEv||'fixo';
+  document.getElementById('colab-almoco-ev').value=c.minAlmocoEv||60;
   document.getElementById('colab-status').value=c.status||'ativo';
   document.getElementById('colab-edit-id').value=id;
+  // visibilidade
+  document.getElementById('grupo-jornada-fixa').style.display=vinculo==='eventual'?'none':'block';
+  document.getElementById('grupo-jornada-eventual').style.display=vinculo==='eventual'?'block':'none';
   document.getElementById('grupo-hs-sabado').style.display=(c.sabado&&c.sabado!=='nao')?'block':'none';
+  document.getElementById('grupo-almoco-min').style.display=(c.almocoTipo||'fixo')==='fixo'?'block':'none';
+  document.getElementById('grupo-almoco-min-ev').style.display=(c.almocoTipoEv||'fixo')==='fixo'?'block':'none';
   document.getElementById('colab-error').textContent='';
   document.getElementById('modal-colab').classList.add('open');
 }
 async function salvarColab(){
   const nome=document.getElementById('colab-nome').value.trim(),email=document.getElementById('colab-email').value.trim();
   const senha=document.getElementById('colab-senha').value,cargo=document.getElementById('colab-cargo').value.trim();
-  const jornadaMin=timeToMin(document.getElementById('colab-jornada').value)||528;
-  const minAlmoco=parseInt(document.getElementById('colab-almoco').value)||60;
-  const sabado=document.getElementById('colab-sabado').value;
-  const jornadaSabMin=timeToMin(document.getElementById('colab-hs-sabado').value)||240;
+  const vinculo=document.getElementById('colab-vinculo').value;
   const status=document.getElementById('colab-status').value;
   const editId=document.getElementById('colab-edit-id').value;
   const errEl=document.getElementById('colab-error');
   if(!nome||!email){errEl.textContent='Nome e e-mail obrigatórios.';return;}
-  const dados={nome,email,cargo,jornadaMin,minAlmoco,sabado,jornadaSabMin,status,isAdmin:false};
+
+  let dados={nome,email,cargo,vinculo,status,isAdmin:false};
+
+  if(vinculo==='eventual'){
+    const jornadaEvMin=timeToMin(document.getElementById('colab-jornada-ev').value)||480;
+    const almocoTipoEv=document.getElementById('colab-almoco-tipo-ev').value;
+    const minAlmocoEv=almocoTipoEv==='fixo'?(parseInt(document.getElementById('colab-almoco-ev').value)||60):0;
+    dados={...dados,jornadaEvMin,almocoTipoEv,minAlmocoEv,sabado:'nao',jornadaMin:jornadaEvMin,minAlmoco:minAlmocoEv,almocoTipo:almocoTipoEv};
+  }else{
+    const jornadaMin=timeToMin(document.getElementById('colab-jornada').value)||528;
+    const almocoTipo=document.getElementById('colab-almoco-tipo').value;
+    const minAlmoco=almocoTipo==='fixo'?(parseInt(document.getElementById('colab-almoco').value)||60):0;
+    const sabado=document.getElementById('colab-sabado').value;
+    const jornadaSabMin=timeToMin(document.getElementById('colab-hs-sabado').value)||240;
+    dados={...dados,jornadaMin,almocoTipo,minAlmoco,sabado,jornadaSabMin};
+  }
+
   try{
     if(!editId){
       if(!senha||senha.length<6){errEl.textContent='Senha mínimo 6 caracteres.';return;}
