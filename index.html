@@ -790,14 +790,10 @@ async function carregarRegistrosHoje() {
   const hoje = new Date().toISOString().slice(0,10);
   const body = document.getElementById('registros-hoje');
   try {
-    // Busca só por uid+dataISO, ordena no JS (evita índice composto)
-    const snap = await db.collection('pontos')
-      .where('uid','==',currentUser.uid)
-      .where('dataISO','==',hoje)
-      .get();
-    if (snap.empty) { body.innerHTML = '<div class="empty-state"><div class="icon">📭</div><p>Nenhum registro hoje.</p></div>'; return; }
+    const snap = await db.collection('pontos').where('uid','==',currentUser.uid).get();
     const docs = [];
-    snap.forEach(d => docs.push(d.data()));
+    snap.forEach(d => { const r = d.data(); if (r.dataISO === hoje) docs.push(r); });
+    if (!docs.length) { body.innerHTML = '<div class="empty-state"><div class="icon">📭</div><p>Nenhum registro hoje.</p></div>'; return; }
     docs.sort((a,b) => a.hora.localeCompare(b.hora));
     let html = '<div class="table-wrap"><table><thead><tr><th>Tipo</th><th>Horário</th><th>Foto</th></tr></thead><tbody>';
     docs.forEach(r => {
@@ -833,14 +829,14 @@ async function carregarHistorico() {
   const ate = ateEl.value || new Date().toISOString().slice(0,10);
   body.innerHTML = '<tr><td colspan="5" class="loading">Carregando...</td></tr>';
   try {
-    const snap = await db.collection('pontos')
-      .where('uid','==',currentUser.uid)
-      .where('dataISO','>=',de)
-      .where('dataISO','<=',ate)
-      .get();
-    if (snap.empty) { body.innerHTML = '<tr><td colspan="5" class="empty-state">Nenhum registro no período.</td></tr>'; return; }
+    // Busca só por uid (sem range de datas) e filtra no JS
+    const snap = await db.collection('pontos').where('uid','==',currentUser.uid).get();
     const docs = [];
-    snap.forEach(d => docs.push(d.data()));
+    snap.forEach(d => {
+      const r = d.data();
+      if (r.dataISO >= de && r.dataISO <= ate) docs.push(r);
+    });
+    if (!docs.length) { body.innerHTML = '<tr><td colspan="5" class="empty-state">Nenhum registro no período.</td></tr>'; return; }
     docs.sort((a,b) => b.dataISO.localeCompare(a.dataISO) || a.hora.localeCompare(b.hora));
     let html = '';
     docs.forEach(r => {
@@ -864,17 +860,16 @@ async function carregarBancoHoras() {
   const hoje = now.toISOString().slice(0,10);
 
   try {
-    const snap = await db.collection('pontos')
-      .where('uid','==',currentUser.uid)
-      .where('dataISO','>=',mesInicio)
-      .where('dataISO','<=',hoje)
-      .get();
+    // Busca tudo por uid e filtra no JS
+    const snap = await db.collection('pontos').where('uid','==',currentUser.uid).get();
 
     const porDia = {};
     snap.forEach(d => {
       const r = d.data();
-      if (!porDia[r.dataISO]) porDia[r.dataISO] = [];
-      porDia[r.dataISO].push(r);
+      if (r.dataISO >= mesInicio && r.dataISO <= hoje) {
+        if (!porDia[r.dataISO]) porDia[r.dataISO] = [];
+        porDia[r.dataISO].push(r);
+      }
     });
 
     let totalMinTrabalhado = 0;
@@ -1140,12 +1135,13 @@ async function carregarHistoricoAdmin() {
   const body = document.getElementById('admin-hist-body');
   body.innerHTML = '<tr><td colspan="6" class="loading">Carregando...</td></tr>';
   try {
-    let query = db.collection('pontos').where('dataISO','>=',de).where('dataISO','<=',ate);
-    if (uid) query = query.where('uid','==',uid);
-    const snap = await query.get();
-    if (snap.empty) { body.innerHTML = '<tr><td colspan="6" class="empty-state">Nenhum registro no período.</td></tr>'; return; }
+    const snap = await db.collection('pontos').get();
     const docs = [];
-    snap.forEach(d => docs.push(d.data()));
+    snap.forEach(d => {
+      const r = d.data();
+      if (r.dataISO >= de && r.dataISO <= ate && (!uid || r.uid === uid)) docs.push(r);
+    });
+    if (!docs.length) { body.innerHTML = '<tr><td colspan="6" class="empty-state">Nenhum registro no período.</td></tr>'; return; }
     docs.sort((a,b) => b.dataISO.localeCompare(a.dataISO) || a.hora.localeCompare(b.hora));
     let html = '';
     docs.forEach(r => {
@@ -1157,6 +1153,23 @@ async function carregarHistoricoAdmin() {
   } catch(e) {
     body.innerHTML = `<tr><td colspan="6" style="color:var(--danger);padding:12px">Erro: ${e.message}</td></tr>`;
   }
+}
+
+async function gerarRelatorioAdmin() {
+  const uid = document.getElementById('rel-colab-select').value;
+  const de = document.getElementById('rel-de').value || new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().slice(0,10);
+  const ate = document.getElementById('rel-ate').value || new Date().toISOString().slice(0,10);
+  try {
+    const snap = await db.collection('pontos').get();
+    const docs = [];
+    snap.forEach(d => {
+      const r = d.data();
+      if (r.dataISO >= de && r.dataISO <= ate && (!uid || r.uid === uid)) docs.push(r);
+    });
+    docs.sort((a,b) => a.dataISO.localeCompare(b.dataISO) || a.hora.localeCompare(b.hora));
+    const nome = uid ? (colaboradoresCache.find(c => c.id === uid)||{}).nome || 'Colaborador' : 'Todos os Colaboradores';
+    gerarPDFPontos(docs, nome, de, ate);
+  } catch(e) { toast('Erro ao gerar PDF: ' + e.message, 'error'); }
 }
 
 async function carregarColabSelect() {
@@ -1198,15 +1211,12 @@ async function zerarBanco() {
 
 // ─── PDF ───
 async function exportarPDF() {
-  const de = document.getElementById('filtro-de').value || '';
-  const ate = document.getElementById('filtro-ate').value || '';
+  const de = document.getElementById('filtro-de').value || new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().slice(0,10);
+  const ate = document.getElementById('filtro-ate').value || new Date().toISOString().slice(0,10);
   try {
-    const snap = await db.collection('pontos')
-      .where('uid','==',currentUser.uid)
-      .where('dataISO','>=',de).where('dataISO','<=',ate)
-      .get();
+    const snap = await db.collection('pontos').where('uid','==',currentUser.uid).get();
     const docs = [];
-    snap.forEach(d => docs.push(d.data()));
+    snap.forEach(d => { const r = d.data(); if (r.dataISO >= de && r.dataISO <= ate) docs.push(r); });
     docs.sort((a,b) => a.dataISO.localeCompare(b.dataISO) || a.hora.localeCompare(b.hora));
     gerarPDFPontos(docs, currentUserData.nome, de, ate);
   } catch(e) { toast('Erro ao gerar PDF: ' + e.message, 'error'); }
