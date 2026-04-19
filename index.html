@@ -714,13 +714,32 @@ async function calcularBancoMes(){
     const snap=await db.collection('pontos').where('uid','==',currentUser.uid).get();
     const porDia={};
     snap.forEach(d=>{const r={id:d.id,...d.data()};if(r.dataISO>=mesInicio&&r.dataISO<=hoje&&r.status!=='inativo'){if(!porDia[r.dataISO])porDia[r.dataISO]=[];porDia[r.dataISO].push(r);}});
+
     const{minTrab,minPrev,detalhes}=calcularSaldoPeriodo(porDia,currentUserData,mesInicio,hoje,atestados,abonos);
-    const saldo=minTrab-minPrev;
+
+    // Buscar pagamentos/folgas já lançados pelo admin (banco_horas) — descontam do saldo
+    const snapBanco=await db.collection('banco_horas').where('uid','==',currentUser.uid).get();
+    let totalPago=0;
+    const pagamentos=[];
+    snapBanco.forEach(d=>{
+      const r={id:d.id,...d.data()};
+      totalPago+=(r.minutos||0);
+      pagamentos.push(r);
+    });
+
+    const saldoBruto=minTrab-minPrev;
+    const saldoFinal=saldoBruto-totalPago;
+
     const s1=document.getElementById('hist-trabalhado'),s2=document.getElementById('hist-previsto'),s3=document.getElementById('hist-saldo');
-    if(s1)s1.textContent=hm(minTrab);if(s2)s2.textContent=hm(minPrev);
-    if(s3){s3.textContent=(saldo<0?'-':'+')+hm(Math.abs(saldo));s3.className='val '+(saldo>=0?'val-pos':'val-neg');}
+    if(s1)s1.textContent=hm(minTrab);
+    if(s2)s2.textContent=hm(minPrev);
+    if(s3){
+      s3.textContent=(saldoFinal<0?'-':'+')+hm(Math.abs(saldoFinal));
+      s3.className='val '+(saldoFinal>=0?'val-pos':'val-neg');
+    }
+
     const det=document.getElementById('hist-detalhes');
-    if(det&&detalhes.length){
+    if(det){
       let h='';
       detalhes.forEach(d=>{
         let cor='var(--accent2)',label='';
@@ -729,75 +748,102 @@ async function calcularBancoMes(){
           label=`-${hm(d.previsto)} (Falta${d.obs?' — '+d.obs:''})`;
           if(d.abono)label+=` | Abonado: +${hm(d.abono)}`;
         }else if(d.tipo==='atestado'){cor='var(--muted)';label='Atestado';}
-        else if(d.tipo==='abono'){cor='var(--warn)';label=`Abonado${d.saldo>=0?' +'+hm(d.saldo):' '+hm(d.saldo)}`;}
+        else if(d.tipo==='abono'){cor='var(--warn)';label=`Abonado${d.saldo>=0?' +'+hm(d.saldo):' -'+hm(Math.abs(d.saldo))}`;}
         else if(d.tipo==='eventual'){cor='var(--accent)';label=`Eventual — ${hm(d.trabalhado)} trabalhado`;}
+        else if(d.tipo==='extra'){cor='var(--accent2)';label=`+${hm(d.trabalhado)} (Dia extra / ajuste aprovado)`;}
         else{const s=d.saldo||0;cor=s>=0?'var(--accent2)':'var(--danger)';label=(s>=0?'+':'-')+hm(Math.abs(s));if(d.abono)label+=` (inc. abono +${hm(d.abono)})`;}
         h+=`<div class="saldo-row"><span>${d.data}</span><span style="font-family:'DM Mono',monospace;font-size:12px;color:${cor}">${label}</span></div>`;
       });
-      det.innerHTML=h;
+
+      // Mostrar pagamentos/folgas lançados pelo admin
+      if(pagamentos.length){
+        const tipoMap={folga:'Folga concedida',pagamento:'Pagamento em dinheiro'};
+        pagamentos.sort((a,b)=>(b.timestamp?.seconds||0)-(a.timestamp?.seconds||0));
+        pagamentos.forEach(p=>{
+          h+=`<div class="saldo-row"><span>${p.data||'—'} <span style="font-size:11px;color:var(--muted)">${tipoMap[p.tipo]||p.tipo}${p.obs?' — '+p.obs:''}</span></span><span style="font-family:'DM Mono',monospace;font-size:12px;color:var(--warn)">-${hm(p.minutos)}</span></div>`;
+        });
+      }
+
+      // Linha de saldo final
+      if(totalPago>0){
+        h+=`<div class="saldo-row" style="border-top:2px solid var(--border);margin-top:4px;padding-top:8px">
+          <span style="font-weight:600">Saldo líquido (após pagamentos)</span>
+          <span style="font-family:'DM Mono',monospace;font-size:13px;font-weight:700;color:${saldoFinal>=0?'var(--accent2)':'var(--danger)'}">${(saldoFinal>=0?'+':'-')+hm(Math.abs(saldoFinal))}</span>
+        </div>`;
+      }
+
+      det.innerHTML=h||'<p class="text-muted" style="font-size:13px">Nenhum registro no mês ainda.</p>';
     }
   }catch(e){console.warn('Banco:',e.message);}
 }
 
 function calcularSaldoPeriodo(porDia,userData,de,ate,atestados,abonos){
   let minTrab=0,minPrev=0;const detalhes=[];
+  const isEventual=(userData.vinculo||'fixo')==='eventual';
+  const almocoTipo=userData.almocoTipo||'fixo';
+
+  // Coletar todos os dias únicos do período (escalados + dias com registros)
+  const diasSet=new Set();
   let cur=new Date(de+'T12:00:00');const fim=new Date(ate+'T12:00:00');
-  while(cur<=fim){
-    const dISO=cur.toISOString().slice(0,10);
+  while(cur<=fim){diasSet.add(cur.toISOString().slice(0,10));cur.setDate(cur.getDate()+1);}
+  // Adiciona dias fora da escala que têm registros (trabalho extra / ajuste aprovado)
+  Object.keys(porDia).forEach(d=>{if(d>=de&&d<=ate)diasSet.add(d);});
+
+  for(const dISO of [...diasSet].sort()){
     const escalado=isEscalado(userData,dISO);
     const feriado=isFeriadoNacional(dISO)||feriadosMunCache.some(f=>f.data===dISO);
     const emAtestado=atestados.some(a=>dISO>=a.inicio&&dISO<=a.fim);
     const isSab=getDiaSemana(dISO)===6;
-    // Jornada prevista em minutos (hh:mm salvo como jornadaMin)
     const jornMin=isSab?(userData.jornadaSabMin||240):(userData.jornadaMin||528);
-    if(escalado&&!feriado){
-      const isEventual=(userData.vinculo||'fixo')==='eventual';
-      // Eventual não tem previsto fixo — previsto é zero; banco só sobe nos dias trabalhados
+    const temRegistros=!!porDia[dISO];
+    const abonoMin=(abonos||[]).filter(a=>a.dataISO===dISO).reduce((s,a)=>s+(a.minutos||0),0);
+
+    // Feriado: nunca conta nada
+    if(feriado) continue;
+
+    if(escalado){
+      // Dia normal escalado
       if(!isEventual) minPrev+=jornMin;
-      // Abono do dia
-      const abonoMin=(abonos||[]).filter(a=>a.dataISO===dISO).reduce((s,a)=>s+(a.minutos||0),0);
       if(emAtestado){
         if(!isEventual){minTrab+=jornMin;detalhes.push({data:brDate(dISO),tipo:'atestado',previsto:jornMin});}
-      }else if(porDia[dISO]){
-        const regs=porDia[dISO].sort((a,b)=>a.hora.localeCompare(b.hora));
-        const en=regs.find(r=>r.tipo==='entrada'),pa=regs.find(r=>r.tipo==='pausa_inicio'),re=regs.find(r=>r.tipo==='pausa_fim'),sa=regs.find(r=>r.tipo==='saida');
-        if(en&&sa){
-          let min=ph(sa.hora)-ph(en.hora);
-          const almocoTipo=userData.almocoTipo||'fixo';
-          const isSab=getDiaSemana(dISO)===6;
-          if(!isSab){
-            if(almocoTipo==='sem'){
-              // nada a descontar
-            }else{
-              // fixo: se bateu pausa+retorno desconta real, senão desconta configurado
-              if(pa&&re){min-=(ph(re.hora)-ph(pa.hora));}
-              else{min-=(userData.minAlmoco||60);}
-            }
-          }
-          if(min<0)min=0;
-          min+=abonoMin;
-          minTrab+=min;
-          if(isEventual){
-            // Eventual: previsto = o que trabalhou (saldo neutro, mas registra)
-            minPrev+=min;
-            detalhes.push({data:brDate(dISO),tipo:'eventual',trabalhado:min,saldo:0});
-          }else{
-            detalhes.push({data:brDate(dISO),tipo:abonoMin>0?'abono':'normal',saldo:min-jornMin,abono:abonoMin});
-          }
-        }else{
-          minTrab+=abonoMin;
-          if(!isEventual) detalhes.push({data:brDate(dISO),tipo:'falta',previsto:jornMin,obs:'Ponto incompleto',abono:abonoMin});
-        }
+      }else if(temRegistros){
+        const min=calcularMinTrabalhadoDia(porDia[dISO],userData,isSab,abonoMin,almocoTipo);
+        minTrab+=min;
+        if(isEventual){minPrev+=min;detalhes.push({data:brDate(dISO),tipo:'eventual',trabalhado:min,saldo:0});}
+        else{detalhes.push({data:brDate(dISO),tipo:abonoMin>0?'abono':'normal',saldo:min-jornMin,abono:abonoMin});}
       }else{
-        // Não trabalhou
         minTrab+=abonoMin;
         if(!isEventual) detalhes.push({data:brDate(dISO),tipo:abonoMin>=jornMin?'abono':'falta',previsto:jornMin,abono:abonoMin});
-        // Eventual: simplesmente não trabalhou, sem falta
+      }
+    } else if(temRegistros&&!emAtestado){
+      // ── Dia NÃO escalado mas com registros (trabalho extra / ajuste aprovado) ──
+      // Conta como hora trabalhada positiva, sem previsto adicional
+      const min=calcularMinTrabalhadoDia(porDia[dISO],userData,isSab,abonoMin,almocoTipo);
+      if(min>0){
+        minTrab+=min;
+        // Para não-eventuais: entra como saldo positivo (hora extra)
+        // Para eventuais: igual aos dias normais
+        if(isEventual){minPrev+=min;detalhes.push({data:brDate(dISO),tipo:'eventual',trabalhado:min,saldo:0});}
+        else{detalhes.push({data:brDate(dISO),tipo:'extra',trabalhado:min,saldo:min});}
       }
     }
-    cur.setDate(cur.getDate()+1);
+    // Dia não escalado sem registros: ignorado silenciosamente
   }
   return{minTrab,minPrev,detalhes};
+}
+
+// Calcula minutos trabalhados em um dia dado os registros
+function calcularMinTrabalhadoDia(regs,userData,isSab,abonoMin,almocoTipo){
+  const sorted=regs.slice().sort((a,b)=>a.hora.localeCompare(b.hora));
+  const en=sorted.find(r=>r.tipo==='entrada'),pa=sorted.find(r=>r.tipo==='pausa_inicio'),re=sorted.find(r=>r.tipo==='pausa_fim'),sa=sorted.find(r=>r.tipo==='saida');
+  if(!en||!sa) return abonoMin;
+  let min=ph(sa.hora)-ph(en.hora);
+  if(!isSab){
+    if(almocoTipo==='sem'){/* nada */}
+    else{if(pa&&re){min-=(ph(re.hora)-ph(pa.hora));}else{min-=(userData.minAlmoco||60);}}
+  }
+  if(min<0)min=0;
+  return min+abonoMin;
 }
 
 // ════════════════════════════════════════
@@ -1160,7 +1206,8 @@ async function exportarPDF(){
   const snap=await db.collection('pontos').where('uid','==',currentUser.uid).get();
   const docs=[];snap.forEach(d=>{const r=d.data();if(r.dataISO>=de&&r.dataISO<=ate)docs.push(r);});
   docs.sort((a,b)=>a.dataISO.localeCompare(b.dataISO)||a.hora.localeCompare(b.hora));
-  montarPDF(docs,currentUserData.nome,de,ate);
+  const colabMap={[currentUser.uid]:currentUserData};
+  montarPDF(docs,currentUserData.nome,de,ate,colabMap);
 }
 async function gerarRelatorioAdmin(){
   const uid=document.getElementById('rel-colab-select').value;
@@ -1175,32 +1222,129 @@ async function gerarRelatorioAdmin(){
   docs.sort((a,b)=>a.dataISO.localeCompare(b.dataISO)||a.hora.localeCompare(b.hora));
   const nome=uid?(colaboradoresCache.find(c=>c.id===uid)?.nome||'Colaborador'):'Todos';
   const filtroLabel=statusFiltro?` (${statusFiltro==='ativo'?'Somente ativos':'Somente inativos'})`:'';
-  montarPDF(docs,nome+filtroLabel,de,ate);
+  // Montar mapa uid → userData para cálculo correto de almoço
+  const colabMap={};
+  colaboradoresCache.forEach(c=>{colabMap[c.id]=c;});
+  montarPDF(docs,nome+filtroLabel,de,ate,colabMap);
 }
-function montarPDF(docs,nome,de,ate){
+function montarPDF(docs,nome,de,ate,colabMap){
+  // colabMap: { uid: userData } para calcular corretamente por colaborador
   const{jsPDF}=window.jspdf,doc=new jsPDF(),W=doc.internal.pageSize.getWidth();
+
+  // ── Cabeçalho ──
   doc.setFillColor(20,30,60);doc.rect(0,0,W,34,'F');
   doc.setTextColor(255,255,255);doc.setFontSize(15);doc.setFont('helvetica','bold');
   doc.text('RELATÓRIO DE PONTO',W/2,15,{align:'center'});
   doc.setFontSize(9);doc.setFont('helvetica','normal');
   doc.text(`Atacado Óptico MG  |  ${new Date().toLocaleString('pt-BR')}`,W/2,27,{align:'center'});
-  let y=44;doc.setTextColor(30,30,50);doc.setFontSize(10);doc.setFont('helvetica','bold');
-  doc.text(`Colaborador: ${nome}`,14,y);y+=7;doc.setFont('helvetica','normal');
-  doc.text(`Período: ${de?brDate(de):'—'} a ${ate?brDate(ate):'—'}`,14,y);y+=9;
-  doc.setFillColor(79,142,247);doc.rect(14,y,W-28,7,'F');
-  doc.setTextColor(255,255,255);doc.setFontSize(8);doc.setFont('helvetica','bold');
-  doc.text('Data',16,y+5);doc.text('Colaborador',44,y+5);doc.text('Tipo',90,y+5);doc.text('Horário',148,y+5);doc.text('Status',170,y+5);
-  y+=7;doc.setFont('helvetica','normal');
-  docs.forEach((r,i)=>{
-    if(y>272){doc.addPage();y=14;}
-    doc.setFillColor(i%2===0?245:255,i%2===0?247:255,255);doc.rect(14,y,W-28,6,'F');
-    doc.setTextColor(30,30,50);
-    doc.text((r.data||'').slice(0,10),16,y+4.5);doc.text((r.nome||'').slice(0,18),44,y+4.5);
-    doc.text((TL[r.tipo]||r.tipo||'').slice(0,22),90,y+4.5);doc.text(r.hora||'',148,y+4.5);doc.text(r.status||'ativo',170,y+4.5);
-    y+=6;
+
+  let y=44;
+  doc.setTextColor(30,30,50);doc.setFontSize(10);doc.setFont('helvetica','bold');
+  doc.text(`Colaborador: ${nome}`,14,y);y+=7;
+  doc.setFont('helvetica','normal');
+  doc.text(`Período: ${de?brDate(de):'—'} a ${ate?brDate(ate):'—'}`,14,y);y+=10;
+
+  // ── Agrupar registros por colaborador → por dia ──
+  const porColab={};
+  docs.forEach(r=>{
+    const uid=r.uid||'_';
+    if(!porColab[uid])porColab[uid]={nome:r.nome||'—',dias:{}};
+    if(!porColab[uid].dias[r.dataISO])porColab[uid].dias[r.dataISO]=[];
+    porColab[uid].dias[r.dataISO].push(r);
   });
-  y+=8;doc.setFontSize(8);doc.setTextColor(120,120,130);doc.text(`Total: ${docs.length} registros`,14,y);
-  doc.save(`ponto_${nome.replace(/\s/g,'_')}_${de}_${ate}.pdf`);
+
+  let totalGeralMin=0;
+
+  for(const uid of Object.keys(porColab)){
+    const colab=porColab[uid];
+    const uData=(colabMap&&colabMap[uid])||{almocoTipo:'fixo',minAlmoco:60};
+
+    // Cabeçalho do colaborador (se relatório for de todos)
+    if(Object.keys(porColab).length>1){
+      if(y>260){doc.addPage();y=14;}
+      doc.setFillColor(30,50,100);doc.rect(14,y,W-28,7,'F');
+      doc.setTextColor(255,255,255);doc.setFontSize(9);doc.setFont('helvetica','bold');
+      doc.text(colab.nome,16,y+5);
+      y+=7;
+    }
+
+    // Cabeçalho da tabela
+    if(y>265){doc.addPage();y=14;}
+    doc.setFillColor(79,142,247);doc.rect(14,y,W-28,7,'F');
+    doc.setTextColor(255,255,255);doc.setFontSize(8);doc.setFont('helvetica','bold');
+    doc.text('Data',16,y+5);
+    doc.text('Entrada',50,y+5);
+    doc.text('Pausa',74,y+5);
+    doc.text('Retorno',98,y+5);
+    doc.text('Saída',122,y+5);
+    doc.text('H.Trabalhadas',145,y+5);
+    doc.text('Status',185,y+5);
+    y+=7;
+
+    let totalColabMin=0;
+    const diasOrdenados=Object.keys(colab.dias).sort();
+
+    diasOrdenados.forEach((dISO,i)=>{
+      if(y>272){doc.addPage();y=14;}
+      const regs=colab.dias[dISO].filter(r=>r.status!=='inativo').sort((a,b)=>a.hora.localeCompare(b.hora));
+      const isSab=getDiaSemana(dISO)===6;
+      const en=regs.find(r=>r.tipo==='entrada');
+      const pa=regs.find(r=>r.tipo==='pausa_inicio');
+      const re=regs.find(r=>r.tipo==='pausa_fim');
+      const sa=regs.find(r=>r.tipo==='saida');
+      const temInativo=colab.dias[dISO].some(r=>r.status==='inativo');
+
+      // Calcular horas trabalhadas do dia
+      let minDia=0;
+      if(en&&sa){
+        minDia=ph(sa.hora)-ph(en.hora);
+        const at=uData.almocoTipo||'fixo';
+        if(!isSab){
+          if(at!=='sem'){
+            if(pa&&re){minDia-=(ph(re.hora)-ph(pa.hora));}
+            else{minDia-=(uData.minAlmoco||60);}
+          }
+        }
+        if(minDia<0)minDia=0;
+      }
+      totalColabMin+=minDia;
+
+      doc.setFillColor(i%2===0?245:255,i%2===0?247:255,255);
+      doc.rect(14,y,W-28,6,'F');
+      doc.setTextColor(30,30,50);doc.setFontSize(8);doc.setFont('helvetica','normal');
+      doc.text(brDate(dISO),16,y+4.5);
+      doc.text(en?.hora||'—',50,y+4.5);
+      doc.text(pa?.hora||'—',74,y+4.5);
+      doc.text(re?.hora||'—',98,y+4.5);
+      doc.text(sa?.hora||'—',122,y+4.5);
+      doc.setFont('helvetica','bold');
+      doc.text(en&&sa?hm(minDia):'—',145,y+4.5);
+      doc.setFont('helvetica','normal');
+      doc.setTextColor(temInativo?180:30,temInativo?30:30,temInativo?30:50);
+      doc.text(temInativo?'c/ inativo':'completo',185,y+4.5);
+      doc.setTextColor(30,30,50);
+      y+=6;
+    });
+
+    // Subtotal do colaborador
+    if(y>272){doc.addPage();y=14;}
+    totalGeralMin+=totalColabMin;
+    doc.setFillColor(220,230,250);doc.rect(14,y,W-28,7,'F');
+    doc.setTextColor(20,40,100);doc.setFontSize(9);doc.setFont('helvetica','bold');
+    doc.text(`Total ${Object.keys(porColab).length>1?colab.nome:'do período'}: ${hm(totalColabMin)}  (${diasOrdenados.length} dias com registro)`,16,y+5);
+    y+=12;
+  }
+
+  // Total geral (só se for relatório de todos)
+  if(Object.keys(porColab).length>1){
+    if(y>272){doc.addPage();y=14;}
+    doc.setFillColor(20,30,60);doc.rect(14,y,W-28,8,'F');
+    doc.setTextColor(255,255,255);doc.setFontSize(10);doc.setFont('helvetica','bold');
+    doc.text(`TOTAL GERAL: ${hm(totalGeralMin)}`,W/2,y+5.5,{align:'center'});
+    y+=8;
+  }
+
+  doc.save(`ponto_${nome.replace(/\s+/g,'_')}_${de}_${ate}.pdf`);
   toast('📄 PDF gerado!','success');
 }
 
