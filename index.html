@@ -500,12 +500,22 @@ auth.onAuthStateChanged(user=>{
       else db.collection('usuarios').doc(user.uid).set({...currentUserData,email:user.email,isAdmin},{merge:true}).catch(()=>{});
       document.getElementById('user-name-nav').textContent=currentUserData.nome||user.email;
       document.getElementById('user-avatar').textContent=(currentUserData.nome||user.email)[0].toUpperCase();
-    }).catch(()=>{});
+      // Carrega tudo DEPOIS que currentUserData está pronto com os dados reais do colaborador
+      carregarFeriadosMunCache().then(()=>{
+        try{carregarPontoHoje();}catch(e){}
+        try{carregarHistorico();}catch(e){}
+      });
+      try{carregarAjustes();}catch(e){}
+      if(isAdmin)try{carregarColabAdmin();}catch(e){}
+    }).catch(()=>{
+      // Se falhar, carrega com dados default
+      carregarFeriadosMunCache().then(()=>{
+        try{carregarPontoHoje();}catch(e){}
+        try{carregarHistorico();}catch(e){}
+      });
+      try{carregarAjustes();}catch(e){}
+    });
     setDefaultDates();
-    carregarFeriadosMunCache().then(()=>{try{carregarPontoHoje();}catch(e){}});
-    try{carregarHistorico();}catch(e){}
-    try{carregarAjustes();}catch(e){}
-    if(isAdmin)try{carregarColabAdmin();}catch(e){}
   }else{
     document.getElementById('login-screen').style.display='flex';
     document.getElementById('app').style.display='none';
@@ -713,7 +723,14 @@ async function calcularBancoMes(){
   try{
     const snap=await db.collection('pontos').where('uid','==',currentUser.uid).get();
     const porDia={};
-    snap.forEach(d=>{const r={id:d.id,...d.data()};if(r.dataISO>=mesInicio&&r.dataISO<=hoje&&r.status!=='inativo'){if(!porDia[r.dataISO])porDia[r.dataISO]=[];porDia[r.dataISO].push(r);}});
+    snap.forEach(d=>{
+      const r={id:d.id,...d.data()};
+      // Inclui TODOS os registros ativos do período, independente do dia da semana
+      if(r.dataISO&&r.dataISO>=mesInicio&&r.dataISO<=hoje&&r.status!=='inativo'){
+        if(!porDia[r.dataISO])porDia[r.dataISO]=[];
+        porDia[r.dataISO].push(r);
+      }
+    });
 
     const{minTrab,minPrev,detalhes}=calcularSaldoPeriodo(porDia,currentUserData,mesInicio,hoje,atestados,abonos);
 
@@ -1080,7 +1097,12 @@ async function carregarSaldoTodos(){
   let html='<div class="table-wrap"><table><thead><tr><th>Colaborador</th><th>Trabalhado</th><th>Previsto</th><th>Saldo bruto</th><th>Pago/Folga</th><th>Saldo final</th></tr></thead><tbody>';
   for(const c of ativos){
     const porDia={};
-    (allPts[c.id]||[]).forEach(r=>{if(r.dataISO>=mesInicio&&r.dataISO<=hoje&&r.status!=='inativo'){if(!porDia[r.dataISO])porDia[r.dataISO]=[];porDia[r.dataISO].push(r);}});
+    (allPts[c.id]||[]).forEach(r=>{
+      if(r.dataISO&&r.dataISO>=mesInicio&&r.dataISO<=hoje&&r.status!=='inativo'){
+        if(!porDia[r.dataISO])porDia[r.dataISO]=[];
+        porDia[r.dataISO].push(r);
+      }
+    });
     const ats=await buscarAtestados(c.id);
     const abs=await buscarAbonos(c.id);
     const{minTrab,minPrev}=calcularSaldoPeriodo(porDia,c,mesInicio,hoje,ats,abs);
