@@ -750,7 +750,7 @@ async function calcularBancoMes(){
         }else if(d.tipo==='atestado'){cor='var(--muted)';label='Atestado';}
         else if(d.tipo==='abono'){cor='var(--warn)';label=`Abonado${d.saldo>=0?' +'+hm(d.saldo):' -'+hm(Math.abs(d.saldo))}`;}
         else if(d.tipo==='eventual'){cor='var(--accent)';label=`Eventual — ${hm(d.trabalhado)} trabalhado`;}
-        else if(d.tipo==='extra'){cor='var(--accent2)';label=`+${hm(d.trabalhado)} (Dia extra / ajuste aprovado)`;}
+        else if(d.tipo==='extra'){cor='var(--accent2)';label=`+${hm(d.trabalhado)} (${d.label||'Dia extra'})`;}
         else{const s=d.saldo||0;cor=s>=0?'var(--accent2)':'var(--danger)';label=(s>=0?'+':'-')+hm(Math.abs(s));if(d.abono)label+=` (inc. abono +${hm(d.abono)})`;}
         h+=`<div class="saldo-row"><span>${d.data}</span><span style="font-family:'DM Mono',monospace;font-size:12px;color:${cor}">${label}</span></div>`;
       });
@@ -782,32 +782,33 @@ function calcularSaldoPeriodo(porDia,userData,de,ate,atestados,abonos){
   const isEventual=(userData.vinculo||'fixo')==='eventual';
   const almocoTipo=userData.almocoTipo||'fixo';
 
-  // Coletar todos os dias únicos do período (escalados + dias com registros)
+  // Coletar TODOS os dias do período + todos os dias que têm registros
   const diasSet=new Set();
   let cur=new Date(de+'T12:00:00');const fim=new Date(ate+'T12:00:00');
   while(cur<=fim){diasSet.add(cur.toISOString().slice(0,10));cur.setDate(cur.getDate()+1);}
-  // Adiciona dias fora da escala que têm registros (trabalho extra / ajuste aprovado)
   Object.keys(porDia).forEach(d=>{if(d>=de&&d<=ate)diasSet.add(d);});
 
   for(const dISO of [...diasSet].sort()){
     const escalado=isEscalado(userData,dISO);
     const feriado=isFeriadoNacional(dISO)||feriadosMunCache.some(f=>f.data===dISO);
     const emAtestado=atestados.some(a=>dISO>=a.inicio&&dISO<=a.fim);
-    const isSab=getDiaSemana(dISO)===6;
+    const wd=getDiaSemana(dISO);
+    const isSab=wd===6;
+    const isDom=wd===0;
+    // Dias não escalados por natureza (dom/feriado) mas com registros = hora extra,
+    // não desconta almoço fixo (é trabalho extraordinário)
+    const isDiaExtraordinario=!escalado;
     const jornMin=isSab?(userData.jornadaSabMin||240):(userData.jornadaMin||528);
     const temRegistros=!!porDia[dISO];
     const abonoMin=(abonos||[]).filter(a=>a.dataISO===dISO).reduce((s,a)=>s+(a.minutos||0),0);
 
-    // Feriado: nunca conta nada
-    if(feriado) continue;
-
-    if(escalado){
-      // Dia normal escalado
+    if(escalado&&!feriado){
+      // ── Dia escalado normal ──
       if(!isEventual) minPrev+=jornMin;
       if(emAtestado){
         if(!isEventual){minTrab+=jornMin;detalhes.push({data:brDate(dISO),tipo:'atestado',previsto:jornMin});}
       }else if(temRegistros){
-        const min=calcularMinTrabalhadoDia(porDia[dISO],userData,isSab,abonoMin,almocoTipo);
+        const min=calcularMinTrabalhadoDia(porDia[dISO],userData,isSab,abonoMin,almocoTipo,false);
         minTrab+=min;
         if(isEventual){minPrev+=min;detalhes.push({data:brDate(dISO),tipo:'eventual',trabalhado:min,saldo:0});}
         else{detalhes.push({data:brDate(dISO),tipo:abonoMin>0?'abono':'normal',saldo:min-jornMin,abono:abonoMin});}
@@ -816,31 +817,40 @@ function calcularSaldoPeriodo(porDia,userData,de,ate,atestados,abonos){
         if(!isEventual) detalhes.push({data:brDate(dISO),tipo:abonoMin>=jornMin?'abono':'falta',previsto:jornMin,abono:abonoMin});
       }
     } else if(temRegistros&&!emAtestado){
-      // ── Dia NÃO escalado mas com registros (trabalho extra / ajuste aprovado) ──
-      // Conta como hora trabalhada positiva, sem previsto adicional
-      const min=calcularMinTrabalhadoDia(porDia[dISO],userData,isSab,abonoMin,almocoTipo);
+      // ── Dia NÃO escalado (domingo, feriado, sábado de folga, etc.) com registros ──
+      // Conta integralmente como hora extra — sem desconto automático de almoço
+      // (pois é trabalho extraordinário; se quiser descontar, bateu pausa+retorno)
+      const min=calcularMinTrabalhadoDia(porDia[dISO],userData,true/*trata como sab: sem desconto fixo*/,abonoMin,almocoTipo,true/*extra*/);
       if(min>0){
         minTrab+=min;
-        // Para não-eventuais: entra como saldo positivo (hora extra)
-        // Para eventuais: igual aos dias normais
         if(isEventual){minPrev+=min;detalhes.push({data:brDate(dISO),tipo:'eventual',trabalhado:min,saldo:0});}
-        else{detalhes.push({data:brDate(dISO),tipo:'extra',trabalhado:min,saldo:min});}
+        else{
+          const label=feriado?'Feriado trabalhado':isDom?'Domingo trabalhado':isSab?'Sábado extra':'Dia extra';
+          detalhes.push({data:brDate(dISO),tipo:'extra',trabalhado:min,saldo:min,label});
+        }
       }
     }
-    // Dia não escalado sem registros: ignorado silenciosamente
+    // Dia não escalado sem registros: ignorado
   }
   return{minTrab,minPrev,detalhes};
 }
 
-// Calcula minutos trabalhados em um dia dado os registros
-function calcularMinTrabalhadoDia(regs,userData,isSab,abonoMin,almocoTipo){
-  const sorted=regs.slice().sort((a,b)=>a.hora.localeCompare(b.hora));
+// Calcula minutos trabalhados em um dia
+// isDiaExtra=true → não aplica desconto fixo de almoço (só desconta se bateu pausa+retorno)
+function calcularMinTrabalhadoDia(regs,userData,semAlmocoFixo,abonoMin,almocoTipo,isDiaExtra){
+  const sorted=regs.filter(r=>r.status!=='inativo').slice().sort((a,b)=>a.hora.localeCompare(b.hora));
   const en=sorted.find(r=>r.tipo==='entrada'),pa=sorted.find(r=>r.tipo==='pausa_inicio'),re=sorted.find(r=>r.tipo==='pausa_fim'),sa=sorted.find(r=>r.tipo==='saida');
   if(!en||!sa) return abonoMin;
   let min=ph(sa.hora)-ph(en.hora);
-  if(!isSab){
-    if(almocoTipo==='sem'){/* nada */}
-    else{if(pa&&re){min-=(ph(re.hora)-ph(pa.hora));}else{min-=(userData.minAlmoco||60);}}
+  if(!semAlmocoFixo&&!isDiaExtra){
+    // Dia escalado normal com almoço configurado
+    if(almocoTipo!=='sem'){
+      if(pa&&re){min-=(ph(re.hora)-ph(pa.hora));}
+      else{min-=(userData.minAlmoco||60);}
+    }
+  } else {
+    // Dia extra / sábado / domingo: só desconta se bateu pausa E retorno
+    if(pa&&re){min-=(ph(re.hora)-ph(pa.hora));}
   }
   if(min<0)min=0;
   return min+abonoMin;
