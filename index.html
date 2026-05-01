@@ -265,26 +265,75 @@ tr:hover td{background:rgba(255,255,255,.02)}
       </div>
 
       <div id="admin-banco-admin" style="display:none">
-        <div class="card" style="max-width:520px">
-          <div class="card-title" style="margin-bottom:14px">Registrar Pagamento / Folga</div>
-          <div class="form-group"><label>Colaborador</label><select id="banco-colab-select"></select></div>
-          <div class="form-group"><label>Tipo</label><select id="banco-tipo-pag"><option value="folga">Folga concedida</option><option value="pagamento">Pagamento em dinheiro</option></select></div>
-          <div class="form-group"><label>Horas (ex: 3.5)</label><input type="number" id="banco-horas" step="0.5" min="0.5" placeholder="0"></div>
-          <div class="form-group"><label>Observação</label><input type="text" id="banco-obs" placeholder="Ex: Folga dia 20/06"></div>
-          <button class="btn btn-primary" onclick="zerarBanco()">✅ Registrar</button>
+
+        <!-- Lançamento Manual -->
+        <div class="card" style="max-width:560px">
+          <div class="card-title" style="margin-bottom:14px" id="banco-form-title">➕ Novo Lançamento de Banco de Horas</div>
+          <input type="hidden" id="banco-edit-id">
+          <div class="grid-2">
+            <div class="form-group"><label>Colaborador</label><select id="banco-colab-select"></select></div>
+            <div class="form-group"><label>Data de referência</label><input type="date" id="banco-data"></div>
+          </div>
+          <div class="grid-2">
+            <div class="form-group"><label>Tipo</label>
+              <select id="banco-tipo-pag">
+                <option value="folga">Folga concedida</option>
+                <option value="pagamento">Pagamento em dinheiro</option>
+                <option value="abono">Horas abonadas pela empresa</option>
+                <option value="ajuste_positivo">Ajuste positivo (crédito)</option>
+                <option value="ajuste_negativo">Ajuste negativo (débito)</option>
+              </select>
+            </div>
+            <div class="form-group"><label>Sinal</label>
+              <select id="banco-sinal">
+                <option value="-1">➖ Débito (desconta do banco)</option>
+                <option value="1">➕ Crédito (adiciona ao banco)</option>
+              </select>
+              <small>Folga/pagamento/débito = desconta. Crédito/abono = adiciona.</small>
+            </div>
+          </div>
+          <div class="form-group"><label>Quantidade de horas (hh:mm)</label><input type="time" id="banco-horas" value="01:00"></div>
+          <div class="form-group"><label>Observação *</label><input type="text" id="banco-obs" placeholder="Ex: Folga dia 20/06, pagamento extra, débito por falta..."></div>
+          <div class="flex gap-2">
+            <button class="btn btn-primary" onclick="salvarLancamentoBanco()">💾 Salvar Lançamento</button>
+            <button class="btn btn-ghost" id="banco-cancelar-edit" style="display:none" onclick="cancelarEdicaoBanco()">✕ Cancelar</button>
+          </div>
         </div>
+
+        <!-- Filtro de lançamentos -->
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">📋 Lançamentos Registrados</span>
+            <button class="btn btn-ghost btn-sm" onclick="gerarRelatorioSaldo()">📄 Relatório PDF</button>
+          </div>
+          <div class="flex gap-3" style="flex-wrap:wrap;margin-bottom:14px;align-items:flex-end">
+            <div class="form-group" style="margin:0;flex:1;min-width:140px"><label>Colaborador</label><select id="banco-filtro-colab"><option value="">Todos</option></select></div>
+            <div class="form-group" style="margin:0;flex:1;min-width:120px"><label>De</label><input type="date" id="banco-filtro-de"></div>
+            <div class="form-group" style="margin:0;flex:1;min-width:120px"><label>Até</label><input type="date" id="banco-filtro-ate"></div>
+            <button class="btn btn-primary btn-sm" onclick="carregarLancamentos()">🔍 Filtrar</button>
+          </div>
+          <div class="table-wrap">
+            <table><thead><tr><th>Data</th><th>Colaborador</th><th>Tipo</th><th>Sinal</th><th>Horas</th><th>Observação</th><th>Ações</th></tr></thead>
+            <tbody id="lancamentos-body"><tr><td colspan="7" class="loading">Use o filtro acima.</td></tr></tbody></table>
+          </div>
+          <div id="lancamentos-totais" style="margin-top:12px"></div>
+        </div>
+
+        <!-- Saldo consolidado por colaborador -->
+        <div class="card">
+          <div class="card-title" style="margin-bottom:14px">⚖️ Saldo por Colaborador — Mês Atual</div>
+          <div id="saldo-todos"><div class="loading">Carregando...</div></div>
+        </div>
+
+        <!-- Abono rápido (mantido) -->
         <div class="card" style="max-width:520px">
-          <div class="card-title" style="margin-bottom:14px">🟡 Abonar Horas (empresa)</div>
-          <p class="text-muted" style="margin-bottom:14px">Use para lançar horas que a empresa está abonando, por exemplo quando o funcionário trabalhou menos e a empresa cobre a diferença.</p>
+          <div class="card-title" style="margin-bottom:10px">🟡 Abonar Horas por Dia (empresa)</div>
+          <p class="text-muted" style="margin-bottom:12px">Abono vinculado a um dia específico — entra no cálculo diário do banco.</p>
           <div class="form-group"><label>Colaborador</label><select id="abono-colab-select"></select></div>
           <div class="form-group"><label>Data de referência</label><input type="date" id="abono-data"></div>
           <div class="form-group"><label>Horas a abonar (hh:mm)</label><input type="time" id="abono-horas" value="01:00"></div>
-          <div class="form-group"><label>Motivo do abono *</label><input type="text" id="abono-obs" placeholder="Ex: Saída antecipada autorizada"></div>
+          <div class="form-group"><label>Motivo *</label><input type="text" id="abono-obs" placeholder="Ex: Saída antecipada autorizada"></div>
           <button class="btn btn-warn" onclick="registrarAbono()">🟡 Registrar Abono</button>
-        </div>
-        <div class="card">
-          <div class="card-title" style="margin-bottom:14px">Saldo por Colaborador — Mês Atual</div>
-          <div id="saldo-todos"><div class="loading">Carregando...</div></div>
         </div>
       </div>
 
@@ -551,7 +600,13 @@ function changeAdminTab(tab){
   ADMIN_TABS.forEach(id=>{const el=document.getElementById('admin-'+id);if(el)el.style.display='none';});
   document.getElementById('admin-'+tab).style.display='block';
   if(tab==='ajustes-admin'){carregarAjustesAdmin();populateSelect('inativar-colab-select',false);}
-  if(tab==='banco-admin'){populateSelect('banco-colab-select',false);populateSelect('abono-colab-select',false);carregarSaldoTodos();}
+  if(tab==='banco-admin'){
+    populateSelect('banco-colab-select',false);
+    populateSelect('abono-colab-select',false);
+    populateSelect('banco-filtro-colab',true);
+    const el=document.getElementById('banco-data');if(el&&!el.value)el.value=new Date().toISOString().slice(0,10);
+    carregarSaldoTodos();
+  }
   if(tab==='feriados')carregarFeriados();
   if(tab==='atestados'){populateSelect('atestado-colab',false);carregarAtestados();}
   if(tab==='relatorio')populateSelect('rel-colab-select',true);
@@ -683,6 +738,7 @@ function setDefaultDates(){
   s('filtro-de',mes);s('filtro-ate',hoje);s('ajuste-data',hoje);
   s('rel-de',mes);s('rel-ate',hoje);s('admin-hist-de',mes);s('admin-hist-ate',hoje);
   s('feriado-data',hoje);s('atestado-inicio',hoje);s('atestado-fim',hoje);s('inativar-data',hoje);s('abono-data',hoje);
+  s('banco-filtro-de',mes);s('banco-filtro-ate',hoje);s('banco-data',hoje);
 }
 
 async function carregarHistorico(){
@@ -740,8 +796,10 @@ async function calcularBancoMes(){
     const pagamentos=[];
     snapBanco.forEach(d=>{
       const r={id:d.id,...d.data()};
-      totalPago+=(r.minutos||0);
-      pagamentos.push(r);
+      // minutosLiquidos positivo = crédito (adiciona ao banco), negativo = débito (desconta)
+      const liq=r.minutosLiquidos!==undefined?r.minutosLiquidos:-(r.minutos||0);
+      totalPago-=liq; // totalPago representa quanto foi descontado (débitos positivos, créditos negativos)
+      pagamentos.push({...r,liq});
     });
 
     const saldoBruto=minTrab-minPrev;
@@ -774,10 +832,13 @@ async function calcularBancoMes(){
 
       // Mostrar pagamentos/folgas lançados pelo admin
       if(pagamentos.length){
-        const tipoMap={folga:'Folga concedida',pagamento:'Pagamento em dinheiro'};
         pagamentos.sort((a,b)=>(b.timestamp?.seconds||0)-(a.timestamp?.seconds||0));
         pagamentos.forEach(p=>{
-          h+=`<div class="saldo-row"><span>${p.data||'—'} <span style="font-size:11px;color:var(--muted)">${tipoMap[p.tipo]||p.tipo}${p.obs?' — '+p.obs:''}</span></span><span style="font-family:'DM Mono',monospace;font-size:12px;color:var(--warn)">-${hm(p.minutos)}</span></div>`;
+          const liq=p.liq;
+          const pos=liq>0;
+          const cor=pos?'var(--accent2)':'var(--warn)';
+          const label=TIPO_BANCO_LABEL[p.tipo]||p.tipo||'Lançamento';
+          h+=`<div class="saldo-row"><span>${p.data||'—'} <span style="font-size:11px;color:var(--muted)">${label}${p.obs?' — '+p.obs:''}</span></span><span style="font-family:'DM Mono',monospace;font-size:12px;color:${cor}">${pos?'+':'-'}${hm(Math.abs(liq))}</span></div>`;
         });
       }
 
@@ -1067,19 +1128,193 @@ async function buscarRegistrosParaInativar(){
 }
 
 // ════════════════════════════════════════
-// ADMIN – BANCO DE HORAS
+// ADMIN – BANCO DE HORAS (CRUD)
 // ════════════════════════════════════════
-async function zerarBanco(){
+const TIPO_BANCO_LABEL={
+  folga:'Folga concedida',
+  pagamento:'Pagamento em dinheiro',
+  abono:'Horas abonadas',
+  ajuste_positivo:'Ajuste positivo',
+  ajuste_negativo:'Ajuste negativo'
+};
+
+async function salvarLancamentoBanco(){
+  const editId=document.getElementById('banco-edit-id').value;
   const uid=document.getElementById('banco-colab-select').value;
   const tipo=document.getElementById('banco-tipo-pag').value;
-  const horas=parseFloat(document.getElementById('banco-horas').value)||0;
-  const obs=document.getElementById('banco-obs').value;
-  if(!uid||horas<=0){toast('Selecione colaborador e informe as horas.','error');return;}
-  const now=new Date();
-  await db.collection('banco_horas').add({uid,tipo,minutos:Math.round(horas*60),obs,data:now.toLocaleDateString('pt-BR'),timestamp:now});
-  toast('✅ Banco atualizado!','success');
-  document.getElementById('banco-horas').value='';document.getElementById('banco-obs').value='';
+  const sinal=parseInt(document.getElementById('banco-sinal').value)||1;
+  const horasStr=document.getElementById('banco-horas').value;
+  const obs=document.getElementById('banco-obs').value.trim();
+  const dataISO=document.getElementById('banco-data').value;
+  if(!uid||!horasStr||!obs||!dataISO){toast('Preencha todos os campos obrigatórios.','error');return;}
+  const minutos=timeToMin(horasStr);
+  if(minutos<=0){toast('Informe uma quantidade válida de horas.','error');return;}
+  const colab=colaboradoresCache.find(c=>c.id===uid);
+  const dados={uid,nomeColab:colab?.nome||'—',tipo,sinal,minutos,minutosLiquidos:sinal*minutos,obs,dataISO,data:brDate(dataISO),atualizadoEm:new Date(),criadoPor:currentUser.email};
+  try{
+    if(editId){
+      await db.collection('banco_horas').doc(editId).update(dados);
+      toast('✅ Lançamento atualizado!','success');
+    }else{
+      dados.criadoEm=new Date();
+      await db.collection('banco_horas').add(dados);
+      toast('✅ Lançamento registrado!','success');
+    }
+    cancelarEdicaoBanco();
+    carregarLancamentos();
+    carregarSaldoTodos();
+  }catch(e){toast('Erro: '+e.message,'error');}
+}
+
+function cancelarEdicaoBanco(){
+  document.getElementById('banco-edit-id').value='';
+  document.getElementById('banco-form-title').textContent='➕ Novo Lançamento de Banco de Horas';
+  document.getElementById('banco-cancelar-edit').style.display='none';
+  document.getElementById('banco-obs').value='';
+  document.getElementById('banco-horas').value='01:00';
+  document.getElementById('banco-sinal').value='-1';
+  document.getElementById('banco-tipo-pag').value='folga';
+}
+
+async function editarLancamentoBanco(id){
+  const snap=await db.collection('banco_horas').doc(id).get();
+  if(!snap.exists)return;
+  const r=snap.data();
+  document.getElementById('banco-edit-id').value=id;
+  document.getElementById('banco-colab-select').value=r.uid||'';
+  document.getElementById('banco-tipo-pag').value=r.tipo||'folga';
+  document.getElementById('banco-sinal').value=String(r.sinal||-1);
+  document.getElementById('banco-horas').value=minToTime(r.minutos||60);
+  document.getElementById('banco-obs').value=r.obs||'';
+  document.getElementById('banco-data').value=r.dataISO||'';
+  document.getElementById('banco-form-title').textContent='✏️ Editar Lançamento';
+  document.getElementById('banco-cancelar-edit').style.display='inline-flex';
+  document.getElementById('banco-form-title').scrollIntoView({behavior:'smooth'});
+}
+
+async function excluirLancamentoBanco(id){
+  if(!confirm('Excluir este lançamento? Esta ação não pode ser desfeita.'))return;
+  await db.collection('banco_horas').doc(id).delete();
+  toast('Lançamento excluído.','info');
+  carregarLancamentos();
   carregarSaldoTodos();
+}
+
+async function carregarLancamentos(){
+  const uid=document.getElementById('banco-filtro-colab').value;
+  const de=document.getElementById('banco-filtro-de').value||'2000-01-01';
+  const ate=document.getElementById('banco-filtro-ate').value||'2099-12-31';
+  const body=document.getElementById('lancamentos-body');
+  const totaisDiv=document.getElementById('lancamentos-totais');
+  body.innerHTML='<tr><td colspan="7" class="loading">Carregando...</td></tr>';
+  try{
+    const snap=await db.collection('banco_horas').get();
+    const docs=[];
+    snap.forEach(d=>{
+      const r={id:d.id,...d.data()};
+      if(r.dataISO>=de&&r.dataISO<=ate&&(!uid||r.uid===uid))docs.push(r);
+    });
+    docs.sort((a,b)=>b.dataISO.localeCompare(a.dataISO));
+    if(!docs.length){body.innerHTML='<tr><td colspan="7" class="empty-state">Nenhum lançamento no período.</td></tr>';totaisDiv.innerHTML='';return;}
+    let html='',totalPos=0,totalNeg=0;
+    docs.forEach(r=>{
+      const liq=r.minutosLiquidos??((r.sinal||-1)*r.minutos);
+      const pos=liq>0;
+      if(pos)totalPos+=liq;else totalNeg+=Math.abs(liq);
+      const sinBadge=pos?'<span class="badge badge-green">➕ Crédito</span>':'<span class="badge badge-red">➖ Débito</span>';
+      const horas=`<span style="font-family:'DM Mono',monospace;color:${pos?'var(--accent2)':'var(--danger)'}">${pos?'+':'-'}${hm(Math.abs(liq))}</span>`;
+      html+=`<tr>
+        <td>${r.data||brDate(r.dataISO)||'—'}</td>
+        <td>${r.nomeColab||'—'}</td>
+        <td>${TIPO_BANCO_LABEL[r.tipo]||r.tipo}</td>
+        <td>${sinBadge}</td>
+        <td>${horas}</td>
+        <td>${r.obs||'—'}</td>
+        <td>
+          <button class="btn btn-ghost btn-sm" onclick="editarLancamentoBanco('${r.id}')">✏️</button>
+          <button class="btn btn-danger btn-sm" style="margin-left:4px" onclick="excluirLancamentoBanco('${r.id}')">🗑️</button>
+        </td>
+      </tr>`;
+    });
+    body.innerHTML=html;
+    const saldo=totalPos-totalNeg;
+    totaisDiv.innerHTML=`<div style="display:flex;gap:16px;flex-wrap:wrap;font-size:13px;padding:8px 0">
+      <span style="color:var(--accent2)">➕ Créditos: <b>${hm(totalPos)}</b></span>
+      <span style="color:var(--danger)">➖ Débitos: <b>${hm(totalNeg)}</b></span>
+      <span style="color:${saldo>=0?'var(--accent2)':'var(--danger)'};font-weight:700">⚖️ Saldo: <b>${(saldo>=0?'+':'-')+hm(Math.abs(saldo))}</b></span>
+    </div>`;
+  }catch(e){body.innerHTML=`<tr><td colspan="7" style="color:var(--danger);padding:12px">Erro: ${e.message}</td></tr>`;}
+}
+
+async function gerarRelatorioSaldo(){
+  const uid=document.getElementById('banco-filtro-colab').value;
+  const de=document.getElementById('banco-filtro-de').value||new Date(new Date().getFullYear(),new Date().getMonth(),1).toISOString().slice(0,10);
+  const ate=document.getElementById('banco-filtro-ate').value||new Date().toISOString().slice(0,10);
+  const snap=await db.collection('banco_horas').get();
+  const docs=[];
+  snap.forEach(d=>{
+    const r={id:d.id,...d.data()};
+    if(r.dataISO>=de&&r.dataISO<=ate&&(!uid||r.uid===uid))docs.push(r);
+  });
+  docs.sort((a,b)=>a.dataISO.localeCompare(b.dataISO)||(a.nomeColab||'').localeCompare(b.nomeColab||''));
+  const nomeColab=uid?(colaboradoresCache.find(c=>c.id===uid)?.nome||'Colaborador'):'Todos os Colaboradores';
+  montarPDFSaldo(docs,nomeColab,de,ate);
+}
+
+function montarPDFSaldo(docs,nome,de,ate){
+  const{jsPDF}=window.jspdf,doc=new jsPDF(),W=doc.internal.pageSize.getWidth();
+  doc.setFillColor(20,30,60);doc.rect(0,0,W,34,'F');
+  doc.setTextColor(255,255,255);doc.setFontSize(15);doc.setFont('helvetica','bold');
+  doc.text('RELATÓRIO — BANCO DE HORAS',W/2,15,{align:'center'});
+  doc.setFontSize(9);doc.setFont('helvetica','normal');
+  doc.text(`Atacado Óptico MG  |  ${new Date().toLocaleString('pt-BR')}`,W/2,27,{align:'center'});
+  let y=44;
+  doc.setTextColor(30,30,50);doc.setFontSize(10);doc.setFont('helvetica','bold');
+  doc.text(`Colaborador: ${nome}`,14,y);y+=7;
+  doc.setFont('helvetica','normal');
+  doc.text(`Período: ${brDate(de)} a ${brDate(ate)}`,14,y);y+=10;
+
+  // Cabeçalho tabela
+  doc.setFillColor(79,142,247);doc.rect(14,y,W-28,7,'F');
+  doc.setTextColor(255,255,255);doc.setFontSize(8);doc.setFont('helvetica','bold');
+  doc.text('Data',16,y+5);doc.text('Colaborador',38,y+5);doc.text('Tipo',85,y+5);
+  doc.text('Sinal',128,y+5);doc.text('Horas',148,y+5);doc.text('Observação',168,y+5);
+  y+=7;
+
+  let totalPos=0,totalNeg=0;
+  docs.forEach((r,i)=>{
+    if(y>272){doc.addPage();y=14;}
+    const liq=r.minutosLiquidos??((r.sinal||-1)*r.minutos);
+    const pos=liq>0;
+    if(pos)totalPos+=liq;else totalNeg+=Math.abs(liq);
+    doc.setFillColor(i%2===0?245:255,i%2===0?247:255,255);
+    doc.rect(14,y,W-28,6,'F');
+    doc.setFont('helvetica','normal');
+    doc.setTextColor(pos?0:180,pos?100:30,pos?60:30);
+    doc.text(r.data||brDate(r.dataISO)||'',16,y+4.5);
+    doc.setTextColor(30,30,50);
+    doc.text((r.nomeColab||'').slice(0,20),38,y+4.5);
+    doc.text((TIPO_BANCO_LABEL[r.tipo]||r.tipo||'').slice(0,18),85,y+4.5);
+    doc.setTextColor(pos?0:180,pos?120:30,pos?60:30);
+    doc.text(pos?'Crédito':'Débito',128,y+4.5);
+    doc.text((pos?'+':'-')+hm(Math.abs(liq)),148,y+4.5);
+    doc.setTextColor(80,80,100);
+    doc.text((r.obs||'').slice(0,22),168,y+4.5);
+    y+=6;
+  });
+
+  // Rodapé com totais
+  if(y>265){doc.addPage();y=14;}
+  y+=4;
+  doc.setFillColor(230,240,255);doc.rect(14,y,W-28,8,'F');
+  doc.setTextColor(20,40,100);doc.setFontSize(9);doc.setFont('helvetica','bold');
+  const saldo=totalPos-totalNeg;
+  doc.text(`Total créditos: +${hm(totalPos)}`,16,y+5.5);
+  doc.text(`Total débitos: -${hm(totalNeg)}`,80,y+5.5);
+  doc.text(`SALDO: ${(saldo>=0?'+':'-')+hm(Math.abs(saldo))}`,150,y+5.5);
+
+  doc.save(`banco_horas_${nome.replace(/\s+/g,'_')}_${de}_${ate}.pdf`);
+  toast('📄 Relatório gerado!','success');
 }
 
 async function carregarSaldoTodos(){
@@ -1092,7 +1327,14 @@ async function carregarSaldoTodos(){
   const snapP=await db.collection('pontos').get();
   const snapB=await db.collection('banco_horas').get();
   const allPts={};snapP.forEach(d=>{const r={id:d.id,...d.data()};if(!allPts[r.uid])allPts[r.uid]=[];allPts[r.uid].push(r);});
-  const pagos={};snapB.forEach(d=>{const r=d.data();if(!pagos[r.uid])pagos[r.uid]=0;pagos[r.uid]+=(r.minutos||0);});
+  const pagos={};
+  snapB.forEach(d=>{
+    const r=d.data();
+    // Usa minutosLiquidos (com sinal) se disponível, senão usa o modelo antigo (débito = negativo)
+    const liq=r.minutosLiquidos!==undefined?r.minutosLiquidos:-(r.minutos||0);
+    if(!pagos[r.uid])pagos[r.uid]=0;
+    pagos[r.uid]+=liq;
+  });
   const ativos=colaboradoresCache.filter(c=>c.status==='ativo');
   let html='<div class="table-wrap"><table><thead><tr><th>Colaborador</th><th>Trabalhado</th><th>Previsto</th><th>Saldo bruto</th><th>Pago/Folga</th><th>Saldo final</th></tr></thead><tbody>';
   for(const c of ativos){
