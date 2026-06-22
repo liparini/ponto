@@ -106,6 +106,20 @@ tr:hover td{background:rgba(255,255,255,.02)}
 .saldo-row{display:flex;align-items:center;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--border);font-size:13px}
 .saldo-row:last-child{border-bottom:none}
 @media(max-width:600px){.ponto-btns{grid-template-columns:1fr 1fr}.horas-stats{grid-template-columns:1fr}.grid-2,.grid-3{grid-template-columns:1fr}.login-box{width:100%;padding:30px 16px}.clock-time{font-size:34px}.tabs{gap:2px}.tab-btn{min-width:60px;font-size:11px;padding:8px 6px}.container{padding:12px 10px}}
+
+/* ── Aba Horas/Empresa ── */
+.empresa-pill{display:inline-flex;align-items:center;gap:6px;padding:4px 12px;border-radius:20px;font-size:12px;font-weight:600;background:rgba(79,142,247,.15);color:var(--accent)}
+.empresa-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px;margin-bottom:16px}
+.empresa-card{background:var(--surface);border:2px solid var(--border);border-radius:12px;padding:14px 10px;text-align:center;cursor:pointer;transition:all .2s;font-size:13px;font-weight:600;position:relative}
+.empresa-card:hover{border-color:var(--accent);transform:translateY(-1px)}
+.empresa-card.selected{border-color:var(--accent);background:rgba(79,142,247,.12);color:var(--accent)}
+.empresa-card .del-x{position:absolute;top:4px;right:6px;font-size:11px;color:var(--muted);opacity:.5}
+.empresa-card .del-x:hover{color:var(--danger);opacity:1}
+.timer-running{text-align:center;padding:24px;background:rgba(110,231,183,.08);border:1px solid var(--accent2);border-radius:var(--radius);margin-bottom:18px}
+.timer-running .empresa-nome{font-size:15px;color:var(--accent2);font-weight:700;margin-bottom:6px}
+.timer-running .timer-val{font-family:'DM Mono',monospace;font-size:40px;font-weight:600;color:var(--text)}
+.timer-running .timer-since{font-size:12px;color:var(--muted);margin-top:4px}
+.empresa-color-dot{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:6px;vertical-align:middle}
 </style>
 </head>
 <body>
@@ -139,6 +153,7 @@ tr:hover td{background:rgba(255,255,255,.02)}
       <button class="tab-btn active" onclick="changeTab('ponto')">🕐 Bater Ponto</button>
       <button class="tab-btn" onclick="changeTab('historico')">📋 Histórico</button>
       <button class="tab-btn" onclick="changeTab('ajuste')">✏️ Solicitar Ajuste</button>
+      <button class="tab-btn" onclick="changeTab('empresas')">🏢 Horas/Empresa</button>
       <button class="tab-btn admin-tab" onclick="changeTab('admin')" style="display:none">⚙️ Admin</button>
     </div>
 
@@ -210,6 +225,45 @@ tr:hover td{background:rgba(255,255,255,.02)}
         <div class="table-wrap">
           <table><thead><tr><th>Data</th><th>Tipo</th><th>Hora</th><th>Status</th></tr></thead>
           <tbody id="ajustes-body"><tr><td colspan="4" class="loading">Carregando...</td></tr></tbody></table>
+        </div>
+      </div>
+    </div>
+
+    <!-- HORAS POR EMPRESA -->
+    <div class="tab-pane" id="tab-empresas">
+      <div class="section-title">🏢 Horas por Empresa</div>
+
+      <div id="empresas-timer-area"></div>
+
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">Selecione a empresa</span>
+          <button class="btn btn-ghost btn-sm" onclick="abrirModalEmpresa()">+ Nova Empresa</button>
+        </div>
+        <div id="empresas-grid" class="empresa-grid"><div class="loading">Carregando...</div></div>
+        <div class="flex gap-2">
+          <button class="btn btn-success" id="btn-iniciar-empresa" onclick="iniciarSessaoEmpresa()" disabled>▶️ Iniciar Dia</button>
+          <button class="btn btn-danger" id="btn-finalizar-empresa" onclick="finalizarSessaoEmpresa()" disabled>⏹️ Finalizar Dia</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:8px">
+          <span class="card-title">📊 Horas no Período</span>
+        </div>
+        <div class="flex gap-3" style="flex-wrap:wrap;margin-bottom:14px;align-items:flex-end">
+          <div class="form-group" style="margin:0;flex:1;min-width:130px"><label>De</label><input type="date" id="emp-filtro-de"></div>
+          <div class="form-group" style="margin:0;flex:1;min-width:130px"><label>Até</label><input type="date" id="emp-filtro-ate"></div>
+          <button class="btn btn-primary btn-sm" onclick="carregarResumoEmpresas()">🔍 Filtrar</button>
+        </div>
+        <div id="resumo-empresas"><div class="loading">Carregando...</div></div>
+      </div>
+
+      <div class="card">
+        <div class="card-title" style="margin-bottom:14px">📋 Sessões Registradas</div>
+        <div class="table-wrap">
+          <table><thead><tr><th>Empresa</th><th>Data</th><th>Início</th><th>Fim</th><th>Duração</th><th></th></tr></thead>
+          <tbody id="sessoes-empresa-body"><tr><td colspan="6" class="loading">Carregando...</td></tr></tbody></table>
         </div>
       </div>
     </div>
@@ -486,6 +540,48 @@ tr:hover td{background:rgba(255,255,255,.02)}
   </div>
 </div>
 
+<!-- MODAL NOVA EMPRESA -->
+<div class="modal-overlay" id="modal-empresa">
+  <div class="modal-box" style="max-width:420px">
+    <div class="modal-title"><span>Nova Empresa</span><button class="modal-close" onclick="fecharModal('modal-empresa')">✕</button></div>
+    <div class="form-group"><label>Nome da empresa *</label><input type="text" id="empresa-nome" placeholder="Ex: Cliente XPTO Ltda"></div>
+    <div class="form-group"><label>Cor de identificação</label>
+      <select id="empresa-cor">
+        <option value="#4f8ef7">🔵 Azul</option>
+        <option value="#6ee7b7">🟢 Verde</option>
+        <option value="#fbbf24">🟡 Amarelo</option>
+        <option value="#f87171">🔴 Vermelho</option>
+        <option value="#c084fc">🟣 Roxo</option>
+        <option value="#fb923c">🟠 Laranja</option>
+      </select>
+    </div>
+    <div class="flex gap-2 mt-3">
+      <button class="btn btn-primary" onclick="salvarEmpresa()">💾 Salvar</button>
+      <button class="btn btn-ghost" onclick="fecharModal('modal-empresa')">Cancelar</button>
+    </div>
+    <p id="empresa-error" style="color:var(--danger);font-size:13px;margin-top:8px"></p>
+  </div>
+</div>
+
+<!-- MODAL EDITAR SESSÃO EMPRESA -->
+<div class="modal-overlay" id="modal-sessao-empresa">
+  <div class="modal-box" style="max-width:420px">
+    <div class="modal-title"><span>Editar Sessão</span><button class="modal-close" onclick="fecharModal('modal-sessao-empresa')">✕</button></div>
+    <div class="form-group"><label>Empresa</label><select id="sessao-edit-empresa"></select></div>
+    <div class="form-group"><label>Data</label><input type="date" id="sessao-edit-data"></div>
+    <div class="grid-2">
+      <div class="form-group" style="margin:0"><label>Início</label><input type="time" id="sessao-edit-inicio"></div>
+      <div class="form-group" style="margin:0"><label>Fim</label><input type="time" id="sessao-edit-fim"></div>
+    </div>
+    <input type="hidden" id="sessao-edit-id">
+    <div class="flex gap-2 mt-3">
+      <button class="btn btn-primary" onclick="salvarEdicaoSessaoEmpresa()">💾 Salvar</button>
+      <button class="btn btn-danger" onclick="excluirSessaoEmpresa()">🗑️ Excluir</button>
+      <button class="btn btn-ghost" onclick="fecharModal('modal-sessao-empresa')">Cancelar</button>
+    </div>
+    <p id="sessao-edit-error" style="color:var(--danger);font-size:13px;margin-top:8px"></p>
+  </div>
+</div>
 
 <div id="toast"></div>
 
@@ -523,6 +619,10 @@ let currentUser=null,currentUserData=null,isAdmin=false;
 let colaboradoresCache=[],feriadosMunCache=[];
 const TL={entrada:'Início do Trabalho',pausa_inicio:'Pausa p/ Almoço',pausa_fim:'Retorno Almoço',saida:'Fim do Trabalho'};
 
+// ── Estado: Horas por Empresa ──
+let empresasCache=[],empresaSelecionadaId=null,sessaoAbertaEmpresa=null,sessoesEmpresaCache=[];
+let _timerEmpresaInterval=null;
+
 // ════════════════════════════════════════
 // CLOCK
 // ════════════════════════════════════════
@@ -556,6 +656,7 @@ auth.onAuthStateChanged(user=>{
       });
       try{carregarAjustes();}catch(e){}
       if(isAdmin)try{carregarColabAdmin();}catch(e){}
+      try{initHorasEmpresa();}catch(e){}
     }).catch(()=>{
       // Se falhar, carrega com dados default
       carregarFeriadosMunCache().then(()=>{
@@ -563,6 +664,7 @@ auth.onAuthStateChanged(user=>{
         try{carregarHistorico();}catch(e){}
       });
       try{carregarAjustes();}catch(e){}
+      try{initHorasEmpresa();}catch(e){}
     });
     setDefaultDates();
   }else{
@@ -570,6 +672,7 @@ auth.onAuthStateChanged(user=>{
     document.getElementById('app').style.display='none';
     if(btn){btn.textContent='Entrar';btn.disabled=false;}
     currentUser=null;currentUserData=null;
+    if(_timerEmpresaInterval){clearInterval(_timerEmpresaInterval);_timerEmpresaInterval=null;}
   }
 });
 
@@ -591,8 +694,9 @@ async function fazerLogout(){await auth.signOut();}
 // ════════════════════════════════════════
 function changeTab(tab){
   document.querySelectorAll('#main-tabs .tab-btn').forEach(b=>b.classList.toggle('active',b.getAttribute('onclick').includes("'"+tab+"'")));
-  document.querySelectorAll('#tab-ponto,#tab-historico,#tab-ajuste,#tab-admin').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('#tab-ponto,#tab-historico,#tab-ajuste,#tab-empresas,#tab-admin').forEach(p=>p.classList.remove('active'));
   document.getElementById('tab-'+tab).classList.add('active');
+  if(tab==='empresas')carregarResumoEmpresas();
 }
 const ADMIN_TABS=['colaboradores','historico-admin','banco-admin','ajustes-admin','feriados','atestados','relatorio'];
 function changeAdminTab(tab){
@@ -739,6 +843,7 @@ function setDefaultDates(){
   s('rel-de',mes);s('rel-ate',hoje);s('admin-hist-de',mes);s('admin-hist-ate',hoje);
   s('feriado-data',hoje);s('atestado-inicio',hoje);s('atestado-fim',hoje);s('inativar-data',hoje);s('abono-data',hoje);
   s('banco-filtro-de',mes);s('banco-filtro-ate',hoje);s('banco-data',hoje);
+  s('emp-filtro-de',mes);s('emp-filtro-ate',hoje);
 }
 
 async function carregarHistorico(){
@@ -956,6 +1061,300 @@ async function carregarAjustes(){
     docs.forEach(r=>{const st=r.status==='aprovado'?'<span class="badge badge-green">Aprovado</span>':r.status==='rejeitado'?'<span class="badge badge-red">Rejeitado</span>':'<span class="badge badge-yellow">Pendente</span>';html+=`<tr><td>${r.data}</td><td>${TL[r.tipo]||r.tipo}</td><td>${r.hora}</td><td>${st}</td></tr>`;});
     body.innerHTML=html;
   }catch(e){}
+}
+
+// ════════════════════════════════════════
+// HORAS POR EMPRESA
+// ════════════════════════════════════════
+async function initHorasEmpresa(){
+  await carregarEmpresas();
+  await verificarSessaoAberta();
+  await carregarSessoesEmpresaPeriodo();
+}
+
+async function carregarEmpresas(){
+  const grid=document.getElementById('empresas-grid');
+  try{
+    const snap=await db.collection('empresas').get();
+    empresasCache=[];
+    snap.forEach(d=>empresasCache.push({id:d.id,...d.data()}));
+    empresasCache.sort((a,b)=>(a.nome||'').localeCompare(b.nome||''));
+    renderEmpresasGrid();
+  }catch(e){if(grid)grid.innerHTML=`<div class="empty-state" style="color:var(--danger)">Erro: ${e.message}</div>`;}
+}
+
+function renderEmpresasGrid(){
+  const grid=document.getElementById('empresas-grid');if(!grid)return;
+  if(!empresasCache.length){grid.innerHTML='<div class="empty-state" style="grid-column:1/-1"><div class="icon">🏢</div><p>Nenhuma empresa cadastrada ainda.</p></div>';return;}
+  let html='';
+  empresasCache.forEach(e=>{
+    const sel=empresaSelecionadaId===e.id?'selected':'';
+    const cor=e.cor||'#4f8ef7';
+    html+=`<div class="empresa-card ${sel}" onclick="selecionarEmpresa('${e.id}')">
+      <span class="del-x" onclick="event.stopPropagation();deletarEmpresa('${e.id}')" title="Remover">✕</span>
+      <span class="empresa-color-dot" style="background:${cor}"></span>${e.nome}
+    </div>`;
+  });
+  grid.innerHTML=html;
+}
+
+function selecionarEmpresa(id){
+  if(sessaoAbertaEmpresa){toast('Finalize o dia em andamento antes de trocar de empresa.','error');return;}
+  empresaSelecionadaId=id;
+  renderEmpresasGrid();
+  atualizarBotoesEmpresa();
+}
+
+function abrirModalEmpresa(){
+  document.getElementById('empresa-nome').value='';
+  document.getElementById('empresa-cor').value='#4f8ef7';
+  document.getElementById('empresa-error').textContent='';
+  document.getElementById('modal-empresa').classList.add('open');
+}
+async function salvarEmpresa(){
+  const nome=document.getElementById('empresa-nome').value.trim();
+  const cor=document.getElementById('empresa-cor').value;
+  const err=document.getElementById('empresa-error');
+  if(!nome){err.textContent='Informe o nome da empresa.';return;}
+  try{
+    await db.collection('empresas').add({nome,cor,criadoEm:new Date(),criadoPor:currentUser.email});
+    fecharModal('modal-empresa');
+    toast('✅ Empresa cadastrada!','success');
+    await carregarEmpresas();
+  }catch(e){err.textContent='Erro: '+e.message;}
+}
+async function deletarEmpresa(id){
+  if(empresaSelecionadaId===id&&sessaoAbertaEmpresa){toast('Finalize o dia em andamento antes de remover esta empresa.','error');return;}
+  if(!confirm('Remover esta empresa da lista? Sessões já registradas serão mantidas.'))return;
+  await db.collection('empresas').doc(id).delete();
+  if(empresaSelecionadaId===id)empresaSelecionadaId=null;
+  toast('Empresa removida.','info');
+  await carregarEmpresas();
+  atualizarBotoesEmpresa();
+}
+
+async function verificarSessaoAberta(){
+  if(!currentUser)return;
+  try{
+    const snap=await db.collection('horas_empresa').where('uid','==',currentUser.uid).where('status','==','aberta').get();
+    sessaoAbertaEmpresa=null;
+    snap.forEach(d=>{sessaoAbertaEmpresa={id:d.id,...d.data()};});
+    if(sessaoAbertaEmpresa)empresaSelecionadaId=sessaoAbertaEmpresa.empresaId;
+    renderEmpresasGrid();
+    renderTimerEmpresa();
+    atualizarBotoesEmpresa();
+  }catch(e){console.warn('Sessão aberta:',e.message);}
+}
+
+function atualizarBotoesEmpresa(){
+  const btnIni=document.getElementById('btn-iniciar-empresa'),btnFim=document.getElementById('btn-finalizar-empresa');
+  if(!btnIni||!btnFim)return;
+  if(sessaoAbertaEmpresa){
+    btnIni.disabled=true;
+    btnFim.disabled=false;
+  }else{
+    btnIni.disabled=!empresaSelecionadaId;
+    btnFim.disabled=true;
+  }
+}
+
+function renderTimerEmpresa(){
+  const area=document.getElementById('empresas-timer-area');if(!area)return;
+  if(_timerEmpresaInterval){clearInterval(_timerEmpresaInterval);_timerEmpresaInterval=null;}
+  if(!sessaoAbertaEmpresa){area.innerHTML='';return;}
+  const emp=empresasCache.find(e=>e.id===sessaoAbertaEmpresa.empresaId);
+  const nomeEmp=emp?.nome||sessaoAbertaEmpresa.empresaNome||'Empresa';
+  const inicioTs=sessaoAbertaEmpresa.inicioTimestamp?.toDate?sessaoAbertaEmpresa.inicioTimestamp.toDate():new Date(sessaoAbertaEmpresa.dataISO+'T'+sessaoAbertaEmpresa.horaInicio);
+  area.innerHTML=`<div class="timer-running">
+    <div class="empresa-nome">⏱️ Trabalhando para ${nomeEmp}</div>
+    <div class="timer-val" id="timer-empresa-val">00:00:00</div>
+    <div class="timer-since">Iniciado às ${sessaoAbertaEmpresa.horaInicio}</div>
+  </div>`;
+  const tick=()=>{
+    const diffMs=new Date()-inicioTs;
+    const totalSec=Math.max(0,Math.floor(diffMs/1000));
+    const h=String(Math.floor(totalSec/3600)).padStart(2,'0');
+    const m=String(Math.floor((totalSec%3600)/60)).padStart(2,'0');
+    const s=String(totalSec%60).padStart(2,'0');
+    const el=document.getElementById('timer-empresa-val');
+    if(el)el.textContent=`${h}:${m}:${s}`;
+  };
+  tick();
+  _timerEmpresaInterval=setInterval(tick,1000);
+}
+
+async function iniciarSessaoEmpresa(){
+  if(!currentUser||!empresaSelecionadaId)return;
+  if(sessaoAbertaEmpresa){toast('Já existe um dia em andamento.','error');return;}
+  const emp=empresasCache.find(e=>e.id===empresaSelecionadaId);
+  const now=new Date();
+  const dataISO=now.toISOString().slice(0,10);
+  const horaInicio=now.toLocaleTimeString('pt-BR',{hour12:false}).slice(0,5);
+  document.getElementById('btn-iniciar-empresa').disabled=true;
+  try{
+    const ref=await db.collection('horas_empresa').add({
+      uid:currentUser.uid,
+      nome:currentUserData.nome,
+      empresaId:empresaSelecionadaId,
+      empresaNome:emp?.nome||'—',
+      dataISO,
+      horaInicio,
+      inicioTimestamp:now,
+      horaFim:null,
+      fimTimestamp:null,
+      minutos:null,
+      status:'aberta',
+      criadoEm:now
+    });
+    sessaoAbertaEmpresa={id:ref.id,uid:currentUser.uid,empresaId:empresaSelecionadaId,empresaNome:emp?.nome||'—',dataISO,horaInicio,inicioTimestamp:now,status:'aberta'};
+    toast(`▶️ Dia iniciado para ${emp?.nome||'empresa'} às ${horaInicio}`,'success');
+    renderTimerEmpresa();
+    atualizarBotoesEmpresa();
+  }catch(e){toast('Erro: '+e.message,'error');document.getElementById('btn-iniciar-empresa').disabled=false;}
+}
+
+async function finalizarSessaoEmpresa(){
+  if(!currentUser||!sessaoAbertaEmpresa)return;
+  document.getElementById('btn-finalizar-empresa').disabled=true;
+  const now=new Date();
+  const horaFim=now.toLocaleTimeString('pt-BR',{hour12:false}).slice(0,5);
+  try{
+    const inicioTs=sessaoAbertaEmpresa.inicioTimestamp?.toDate?sessaoAbertaEmpresa.inicioTimestamp.toDate():new Date(sessaoAbertaEmpresa.dataISO+'T'+sessaoAbertaEmpresa.horaInicio);
+    let minutos=Math.round((now-inicioTs)/60000);
+    if(minutos<0)minutos=0;
+    await db.collection('horas_empresa').doc(sessaoAbertaEmpresa.id).update({
+      horaFim,fimTimestamp:now,minutos,status:'fechada'
+    });
+    toast(`⏹️ Dia finalizado às ${horaFim} (${hm(minutos)})`,'success');
+    sessaoAbertaEmpresa=null;
+    if(_timerEmpresaInterval){clearInterval(_timerEmpresaInterval);_timerEmpresaInterval=null;}
+    document.getElementById('empresas-timer-area').innerHTML='';
+    atualizarBotoesEmpresa();
+    await carregarSessoesEmpresaPeriodo();
+    await carregarResumoEmpresas();
+  }catch(e){toast('Erro: '+e.message,'error');document.getElementById('btn-finalizar-empresa').disabled=false;}
+}
+
+async function carregarSessoesEmpresaPeriodo(){
+  if(!currentUser)return;
+  const body=document.getElementById('sessoes-empresa-body');if(!body)return;
+  const de=document.getElementById('emp-filtro-de')?.value||new Date(new Date().getFullYear(),new Date().getMonth(),1).toISOString().slice(0,10);
+  const ate=document.getElementById('emp-filtro-ate')?.value||new Date().toISOString().slice(0,10);
+  body.innerHTML='<tr><td colspan="6" class="loading">Carregando...</td></tr>';
+  try{
+    const snap=await db.collection('horas_empresa').where('uid','==',currentUser.uid).get();
+    const docs=[];
+    snap.forEach(d=>{const r={id:d.id,...d.data()};if(r.dataISO>=de&&r.dataISO<=ate)docs.push(r);});
+    sessoesEmpresaCache=docs;
+    if(!docs.length){body.innerHTML='<tr><td colspan="6" class="empty-state">Nenhuma sessão no período.</td></tr>';return;}
+    docs.sort((a,b)=>b.dataISO.localeCompare(a.dataISO)||(b.horaInicio||'').localeCompare(a.horaInicio||''));
+    let html='';
+    docs.forEach(r=>{
+      const emp=empresasCache.find(e=>e.id===r.empresaId);
+      const cor=emp?.cor||'#8891b0';
+      const nomeEmp=emp?.nome||r.empresaNome||'—';
+      const aberta=r.status==='aberta';
+      const dur=aberta?'<span class="badge badge-yellow">Em andamento</span>':hm(r.minutos||0);
+      html+=`<tr>
+        <td><span class="empresa-color-dot" style="background:${cor}"></span>${nomeEmp}</td>
+        <td>${brDate(r.dataISO)}</td>
+        <td><b>${r.horaInicio||'—'}</b></td>
+        <td><b>${r.horaFim||'—'}</b></td>
+        <td>${dur}</td>
+        <td>${aberta?'—':`<button class="btn btn-ghost btn-sm" onclick="abrirModalEditarSessao('${r.id}')">✏️</button>`}</td>
+      </tr>`;
+    });
+    body.innerHTML=html;
+  }catch(e){body.innerHTML=`<tr><td colspan="6" style="color:var(--danger);padding:12px">Erro: ${e.message}</td></tr>`;}
+}
+
+async function carregarResumoEmpresas(){
+  const div=document.getElementById('resumo-empresas');if(!div)return;
+  if(!currentUser)return;
+  div.innerHTML='<div class="loading">Carregando...</div>';
+  const de=document.getElementById('emp-filtro-de')?.value||new Date(new Date().getFullYear(),new Date().getMonth(),1).toISOString().slice(0,10);
+  const ate=document.getElementById('emp-filtro-ate')?.value||new Date().toISOString().slice(0,10);
+  try{
+    if(!empresasCache.length)await carregarEmpresas();
+    const snap=await db.collection('horas_empresa').where('uid','==',currentUser.uid).get();
+    const porEmpresa={};
+    let totalGeral=0;
+    snap.forEach(d=>{
+      const r=d.data();
+      if(r.dataISO>=de&&r.dataISO<=ate&&r.status==='fechada'){
+        const min=r.minutos||0;
+        if(!porEmpresa[r.empresaId])porEmpresa[r.empresaId]=0;
+        porEmpresa[r.empresaId]+=min;
+        totalGeral+=min;
+      }
+    });
+    const ids=Object.keys(porEmpresa);
+    if(!ids.length){div.innerHTML='<div class="empty-state"><div class="icon">📭</div><p>Nenhuma hora registrada no período.</p></div>';
+      await carregarSessoesEmpresaPeriodo();
+      return;
+    }
+    ids.sort((a,b)=>porEmpresa[b]-porEmpresa[a]);
+    let html='<div class="table-wrap"><table><thead><tr><th>Empresa</th><th>Horas no período</th><th>%</th></tr></thead><tbody>';
+    ids.forEach(id=>{
+      const emp=empresasCache.find(e=>e.id===id);
+      const cor=emp?.cor||'#8891b0';
+      const nome=emp?.nome||'Empresa removida';
+      const min=porEmpresa[id];
+      const pct=totalGeral?((min/totalGeral)*100).toFixed(0):0;
+      html+=`<tr><td><span class="empresa-color-dot" style="background:${cor}"></span><b>${nome}</b></td><td style="font-family:'DM Mono',monospace;color:var(--accent2)">${hm(min)}</td><td>${pct}%</td></tr>`;
+    });
+    html+=`</tbody></table></div>
+    <div class="saldo-row" style="border-top:2px solid var(--border);margin-top:6px;padding-top:10px">
+      <span style="font-weight:700">Total do período</span>
+      <span style="font-family:'DM Mono',monospace;font-weight:700;color:var(--accent)">${hm(totalGeral)}</span>
+    </div>`;
+    div.innerHTML=html;
+    await carregarSessoesEmpresaPeriodo();
+  }catch(e){div.innerHTML=`<div class="empty-state" style="color:var(--danger)">Erro: ${e.message}</div>`;}
+}
+
+function abrirModalEditarSessao(id){
+  const r=sessoesEmpresaCache.find(s=>s.id===id);if(!r)return;
+  let opts='';
+  empresasCache.forEach(e=>{opts+=`<option value="${e.id}" ${e.id===r.empresaId?'selected':''}>${e.nome}</option>`;});
+  document.getElementById('sessao-edit-empresa').innerHTML=opts;
+  document.getElementById('sessao-edit-data').value=r.dataISO;
+  document.getElementById('sessao-edit-inicio').value=r.horaInicio||'';
+  document.getElementById('sessao-edit-fim').value=r.horaFim||'';
+  document.getElementById('sessao-edit-id').value=id;
+  document.getElementById('sessao-edit-error').textContent='';
+  document.getElementById('modal-sessao-empresa').classList.add('open');
+}
+async function salvarEdicaoSessaoEmpresa(){
+  const id=document.getElementById('sessao-edit-id').value;
+  const empresaId=document.getElementById('sessao-edit-empresa').value;
+  const dataISO=document.getElementById('sessao-edit-data').value;
+  const horaInicio=document.getElementById('sessao-edit-inicio').value;
+  const horaFim=document.getElementById('sessao-edit-fim').value;
+  const err=document.getElementById('sessao-edit-error');
+  if(!empresaId||!dataISO||!horaInicio||!horaFim){err.textContent='Preencha todos os campos.';return;}
+  let minutos=ph(horaFim)-ph(horaInicio);
+  if(minutos<=0){err.textContent='Hora de fim deve ser depois da hora de início.';return;}
+  const emp=empresasCache.find(e=>e.id===empresaId);
+  try{
+    await db.collection('horas_empresa').doc(id).update({
+      empresaId,empresaNome:emp?.nome||'—',dataISO,horaInicio,horaFim,minutos,status:'fechada',
+      inicioTimestamp:new Date(dataISO+'T'+horaInicio+':00'),
+      fimTimestamp:new Date(dataISO+'T'+horaFim+':00')
+    });
+    fecharModal('modal-sessao-empresa');
+    toast('✅ Sessão atualizada!','success');
+    await carregarResumoEmpresas();
+  }catch(e){err.textContent='Erro: '+e.message;}
+}
+async function excluirSessaoEmpresa(){
+  const id=document.getElementById('sessao-edit-id').value;
+  if(!id)return;
+  if(!confirm('Excluir esta sessão? Esta ação não pode ser desfeita.'))return;
+  await db.collection('horas_empresa').doc(id).delete();
+  fecharModal('modal-sessao-empresa');
+  toast('Sessão excluída.','info');
+  await carregarResumoEmpresas();
 }
 
 // ════════════════════════════════════════
